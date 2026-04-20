@@ -194,8 +194,18 @@ const MCOLORS=[
 let c1=0,c2=1;
 function mkMat(ci,sel=false){
   const c=MCOLORS[ci];
-  const m=new THREE.MeshStandardMaterial({color:c.hex,roughness:sel?c.r*0.5:c.r,metalness:c.m});
-  if(sel){m.emissive=new THREE.Color(c.hex);m.emissiveIntensity=0.4;}
+  // Glass-like material: very low roughness, low metalness, glossy
+  const m=new THREE.MeshStandardMaterial({
+    color:c.hex,
+    roughness:sel?0.02:0.04,  // glass is very smooth
+    metalness:0.08,            // glass is not metallic
+    envMapIntensity:1.8,       // strong reflections
+  });
+  if(sel){
+    m.emissive=new THREE.Color(c.hex);
+    m.emissiveIntensity=0.35;
+    m.roughness=0.02;
+  }
   return m;
 }
 
