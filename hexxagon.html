@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HEXXAGON</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --gold:#c9a84c;--gold-light:#f0d080;--gold-dark:#8a6a20;
+  --red-hi:#f1948a;--red-lo:#7b241c;
+  --blue-hi:#7fb3d3;--blue-lo:#154360;
+  --text:#e8d5a3;--bg:#0d0704;
+}
+body{
+  background:var(--bg);color:var(--text);font-family:'Crimson Pro',serif;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:12px;gap:0;
+  background-image:radial-gradient(ellipse at 20% 20%,rgba(90,50,20,.15) 0%,transparent 60%),
+    radial-gradient(ellipse at 80% 80%,rgba(20,30,60,.2) 0%,transparent 60%);
+}
+h1{
+  font-family:'Cinzel',serif;font-size:clamp(1.8rem,5vw,3.2rem);font-weight:900;
+  letter-spacing:.3em;
+  background:linear-gradient(135deg,var(--gold-dark),var(--gold-light),var(--gold-dark));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  filter:drop-shadow(0 2px 8px rgba(201,168,76,.4));margin-bottom:2px;
+}
+.subtitle{font-size:.75rem;letter-spacing:.22em;color:rgba(232,213,163,.4);text-transform:uppercase;margin-bottom:6px}
+.gold-line{width:200px;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:0 auto 10px}
+
+/* ELO BAR */
+.elo-wrap{
+  display:flex;align-items:center;gap:12px;margin-bottom:10px;
+  padding:8px 20px;border:1px solid rgba(201,168,76,.2);border-radius:6px;
+  background:rgba(0,0,0,.35);flex-wrap:wrap;justify-content:center;
+}
+.elo-label{font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.18em;color:rgba(201,168,76,.5);text-transform:uppercase}
+.elo-value{font-family:'Cinzel',serif;font-size:1.1rem;font-weight:700;color:var(--gold-light);min-width:48px;text-align:center;transition:color .4s}
+.elo-value.up{color:#7dcea0}.elo-value.down{color:#e59866}
+.elo-bar-wrap{width:130px;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden}
+.elo-bar-fill{height:100%;border-radius:3px;transition:width .6s ease;
+  background:linear-gradient(90deg,#5d6d7e 0%,#2980b9 25%,#c9a84c 55%,#e74c3c 80%,#922b21 100%)}
+.elo-rank{font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.1em;color:var(--gold);min-width:80px}
+.elo-delta{font-size:.78rem;font-style:italic;color:rgba(232,213,163,.5);min-width:48px;text-align:right}
+.elo-delta.pos{color:#7dcea0}.elo-delta.neg{color:#e59866}
+
+/* AI STRENGTH */
+.ai-row{
+  display:flex;align-items:center;gap:8px;margin-bottom:8px;
+  font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.12em;
+  color:rgba(201,168,76,.4);text-transform:uppercase;transition:opacity .4s;
+}
+.ai-pips{display:flex;gap:3px}
+.pip{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.1);transition:background .4s}
+.pip.on{background:var(--gold)}
+.ai-elo-tag{color:rgba(201,168,76,.55);font-size:.58rem}
+
+/* STATUS BAR */
+.status-bar{display:flex;align-items:center;gap:14px;margin-bottom:10px;font-family:'Cinzel',serif;font-size:.7rem;letter-spacing:.09em}
+.player-tag{display:flex;align-items:center;gap:7px;padding:5px 12px;border-radius:4px;border:1px solid rgba(201,168,76,.2);background:rgba(0,0,0,.3);transition:all .3s;opacity:.4}
+.player-tag.active{opacity:1;border-color:var(--gold);box-shadow:0 0 12px rgba(201,168,76,.22)}
+.pdot{width:14px;height:14px;border-radius:50%}
+.pdot.red{background:radial-gradient(circle at 35% 30%,var(--red-hi),var(--red-lo));box-shadow:0 2px 4px rgba(0,0,0,.5),inset 0 1px 2px rgba(255,255,255,.3)}
+.pdot.blue{background:radial-gradient(circle at 35% 30%,var(--blue-hi),var(--blue-lo));box-shadow:0 2px 4px rgba(0,0,0,.5),inset 0 1px 2px rgba(255,255,255,.3)}
+.score{font-size:.85rem;color:var(--gold-light);min-width:16px;text-align:center}
+.divider{color:var(--gold-dark);font-size:.65rem}
+.status-msg{font-family:'Crimson Pro',serif;font-style:italic;font-size:.88rem;color:var(--gold-light);min-width:150px;text-align:center}
+
+/* BOARD */
+.board-outer{
+  position:relative;padding:24px 28px;
+  background-image:repeating-linear-gradient(92deg,transparent 0,transparent 8px,rgba(0,0,0,.03) 8px,rgba(0,0,0,.03) 9px),
+    linear-gradient(135deg,#2a1a0a 0%,#1a0f06 40%,#0f0804 100%);
+  border-radius:8px;border:2px solid var(--gold-dark);
+  box-shadow:0 0 0 1px rgba(201,168,76,.1),0 8px 40px rgba(0,0,0,.8),inset 0 1px 0 rgba(201,168,76,.15),inset 0 0 60px rgba(0,0,0,.4);
+}
+#board-svg{display:block;filter:drop-shadow(0 4px 12px rgba(0,0,0,.5))}
+
+/* BUTTONS */
+.btn-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center}
+.btn{
+  font-family:'Cinzel',serif;font-size:.64rem;letter-spacing:.13em;padding:7px 16px;
+  border:1px solid var(--gold-dark);background:linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.05));
+  color:var(--gold-light);border-radius:3px;cursor:pointer;transition:all .2s;text-transform:uppercase;
+}
+.btn:hover{background:linear-gradient(135deg,rgba(201,168,76,.3),rgba(201,168,76,.1));border-color:var(--gold);box-shadow:0 0 12px rgba(201,168,76,.2)}
+.btn.primary{background:linear-gradient(135deg,var(--gold-dark),var(--gold));color:#1a0f08;border-color:var(--gold-light);font-weight:700}
+.btn.primary:hover{box-shadow:0 0 20px rgba(201,168,76,.4)}
+.btn.danger{border-color:rgba(192,57,43,.5);color:rgba(231,76,60,.7)}
+.btn.danger:hover{border-color:#e74c3c;color:#e74c3c;background:rgba(192,57,43,.1)}
+
+/* MODE */
+.mode-row{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+.mode-label{font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.15em;color:rgba(201,168,76,.4);text-transform:uppercase}
+.mode-btn{font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.1em;padding:4px 11px;border:1px solid rgba(201,168,76,.2);background:transparent;color:rgba(201,168,76,.4);border-radius:3px;cursor:pointer;transition:all .2s}
+.mode-btn.active{border-color:var(--gold);color:var(--gold-light);background:rgba(201,168,76,.1)}
+
+/* WIN OVERLAY */
+.win-banner{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:100;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px}
+.win-banner.show{display:flex}
+.win-title{font-family:'Cinzel',serif;font-size:clamp(1.8rem,6vw,3.5rem);font-weight:900;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 20px rgba(201,168,76,.5));animation:pulse 1.5s ease-in-out infinite;text-align:center}
+.win-sub{font-size:1rem;font-style:italic;color:var(--text);opacity:.75}
+.win-elo-box{font-family:'Cinzel',serif;font-size:.82rem;letter-spacing:.08em;padding:10px 24px;border:1px solid rgba(201,168,76,.3);border-radius:4px;background:rgba(0,0,0,.4);text-align:center;line-height:1.8}
+@keyframes pulse{0%,100%{filter:drop-shadow(0 0 20px rgba(201,168,76,.5))}50%{filter:drop-shadow(0 0 40px rgba(201,168,76,.9))}}
+
+/* RULES */
+.rules-wrap{margin-top:8px;max-width:480px;text-align:center}
+.rules-box{display:none;margin-top:6px;padding:11px 16px;background:rgba(0,0,0,.4);border:1px solid rgba(201,168,76,.15);border-radius:4px;font-size:.8rem;line-height:1.7;color:rgba(232,213,163,.75);text-align:left}
+.rules-box.open{display:block}
+.rules-box strong{color:var(--gold-light)}
+</style>
+</head>
+<body>
+
+<h1>HEXXAGON</h1>
+<div class="gold-line"></div>
+<div class="subtitle">Klonen · Springen · Infizieren</div>
+
+<div class="elo-wrap">
+  <span class="elo-label">Deine ELO</span>
+  <span class="elo-value" id="elo-value">1000</span>
+  <div class="elo-bar-wrap"><div class="elo-bar-fill" id="elo-bar" style="width:22%"></div></div>
+  <span class="elo-rank" id="elo-rank">Anfänger</span>
+  <span class="elo-delta" id="elo-delta"></span>
+</div>
+
+<div class="ai-row" id="ai-row" style="opacity:0.3">
+  <span>KI-Stärke:</span>
+  <div class="ai-pips" id="ai-pips">
+    <div class="pip" id="pip0"></div><div class="pip" id="pip1"></div><div class="pip" id="pip2"></div>
+    <div class="pip" id="pip3"></div><div class="pip" id="pip4"></div><div class="pip" id="pip5"></div>
+    <div class="pip" id="pip6"></div><div class="pip" id="pip7"></div><div class="pip" id="pip8"></div><div class="pip" id="pip9"></div>
+  </div>
+  <span class="ai-elo-tag" id="ai-elo-tag"></span>
+</div>
+
+<div class="mode-row">
+  <span class="mode-label">Modus:</span>
+  <button class="mode-btn active" id="btn-pvp" onclick="setMode('pvp')">Zwei Spieler</button>
+  <button class="mode-btn" id="btn-ai" onclick="setMode('ai')">vs. KI (ELO)</button>
+</div>
+
+<div class="status-bar">
+  <div class="player-tag active" id="tag-red">
+    <div class="pdot red"></div><span>ROT</span><span class="score" id="score-red">3</span>
+  </div>
+  <span class="divider">✦</span>
+  <div class="status-msg" id="status-msg">Rot beginnt</div>
+  <span class="divider">✦</span>
+  <div class="player-tag" id="tag-blue">
+    <div class="pdot blue"></div><span>BLAU / KI</span><span class="score" id="score-blue">3</span>
+  </div>
+</div>
+
+<div class="board-outer">
+  <svg id="board-svg"></svg>
+</div>
+
+<div class="btn-row">
+  <button class="btn primary" onclick="resetGame()">Neues Spiel</button>
+  <button class="btn" onclick="document.getElementById('rules-box').classList.toggle('open')">Regeln</button>
+  <button class="btn danger" onclick="doResetELO()">ELO Reset</button>
+</div>
+
+<div class="rules-wrap">
+  <div class="rules-box" id="rules-box">
+    <strong>Ziel:</strong> Am Ende mehr Steine als der Gegner haben.<br><br>
+    <strong>Klonen (1 Feld):</strong> Stein auf ein Nachbarfeld → Original bleibt, neuer Stein entsteht. Gegnerische Nachbar-Steine werden infiziert und wechseln die Farbe.<br><br>
+    <strong>Springen (2 Felder):</strong> Springe 2 Felder weit → Original verschwindet. Gegnerische Nachbar-Steine werden trotzdem infiziert.<br><br>
+    <span style="color:rgba(255,220,100,.8)">■ Gelb</span> = Klon-Ziel &nbsp;·&nbsp; <span style="color:rgba(100,220,255,.8)">■ Cyan</span> = Sprung-Ziel<br><br>
+    <strong>ELO-System:</strong> Die KI wird vor jedem Spiel zufällig ±150 Punkte um deine aktuelle ELO gewürfelt — manchmal etwas leichter, manchmal schwerer. Gewinnst du, steigt deine ELO und die KI wird langfristig stärker. Verlierst du, sinkt sie. So bleibt es dauerhaft ausgeglichen.
+  </div>
+</div>
+
+<div class="win-banner" id="win-banner">
+  <div class="win-title" id="win-title"></div>
+  <div class="win-sub" id="win-sub"></div>
+  <div class="win-elo-box" id="win-elo-box" style="display:none"></div>
+  <div style="display:flex;gap:10px;margin-top:6px">
+    <button class="btn primary" onclick="resetGame()">Revanche</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  ELO SYSTEM
+// ═══════════════════════════════════════════
+const ELO_KEY   = 'hexxagon_elo_v1';
+const ELO_MIN   = 600, ELO_MAX = 2400, ELO_START = 1000;
+const ELO_K     = 32;
+
+let playerELO    = parseInt(localStorage.getItem(ELO_KEY)) || ELO_START;
+let currentAIELO = 1000;
+
+function saveELO() { localStorage.setItem(ELO_KEY, playerELO); }
+
+function doResetELO() {
+  if (!confirm('ELO wirklich auf 1000 zurücksetzen?')) return;
+  playerELO = ELO_START; saveELO();
+  updateELODisplay(0); resetGame();
+}
+
+const RANKS = [
+  { min:2000, name:'Legende',      color:'#c9a84c' },
+  { min:1800, name:'Großmeister',  color:'#9b59b6' },
+  { min:1600, name:'Meister',      color:'#e74c3c' },
+  { min:1400, name:'Experte',      color:'#e67e22' },
+  { min:1200, name:'Fortgeschr.',  color:'#f39c12' },
+  { min:1000, name:'Lehrling',     color:'#27ae60' },
+  { min: 800, name:'Anfänger',     color:'#2980b9' },
+  { min:   0, name:'Neuling',      color:'#7f8c8d' },
+];
+function getRank(elo) { return RANKS.find(r => elo >= r.min) || RANKS[RANKS.length-1]; }
+
+// Roll AI ELO: player ± up to 150, clamped
+function rollAIELO() {
+  const spread = 150;
+  const raw = playerELO + (Math.random()*2 - 1) * spread;
+  return Math.max(ELO_MIN, Math.min(ELO_MAX, Math.round(raw)));
+}
+
+function expectedScore(a, b) { return 1 / (1 + Math.pow(10, (b - a) / 400)); }
+
+function applyELOResult(result) { // 1=win,0=loss,0.5=draw
+  const exp   = expectedScore(playerELO, currentAIELO);
+  const delta = Math.round(ELO_K * (result - exp));
+  const oldELO = playerELO;
+  playerELO = Math.max(ELO_MIN, Math.min(ELO_MAX, playerELO + delta));
+  saveELO();
+  return playerELO - oldELO;
+}
+
+// AI params from ELO: depth 0-3, randomness 1-0
+function aiParams(aiElo) {
+  const t = (aiElo - ELO_MIN) / (ELO_MAX - ELO_MIN); // 0..1
+  return { depth: Math.round(t * 3), randomness: 1 - t };
+}
+
+function updateELODisplay(delta) {
+  const el = document.getElementById('elo-value');
+  el.textContent = playerELO;
+  el.className = 'elo-value' + (delta > 0 ? ' up' : delta < 0 ? ' down' : '');
+  setTimeout(() => el.className = 'elo-value', 1600);
+
+  const pct = ((playerELO - ELO_MIN) / (ELO_MAX - ELO_MIN)) * 100;
+  document.getElementById('elo-bar').style.width = pct + '%';
+
+  const rank = getRank(playerELO);
+  const rankEl = document.getElementById('elo-rank');
+  rankEl.textContent = rank.name; rankEl.style.color = rank.color;
+
+  const dEl = document.getElementById('elo-delta');
+  if (delta !== 0) {
+    dEl.textContent = (delta > 0 ? '+' : '') + delta;
+    dEl.className = 'elo-delta ' + (delta > 0 ? 'pos' : 'neg');
+  } else { dEl.textContent = ''; dEl.className = 'elo-delta'; }
+}
+
+function updateAIPips(aiElo) {
+  const t = Math.max(0, Math.min(1, (aiElo - ELO_MIN) / (ELO_MAX - ELO_MIN)));
+  const lit = Math.round(t * 10);
+  for (let i = 0; i < 10; i++)
+    document.getElementById('pip'+i).classList.toggle('on', i < lit);
+  document.getElementById('ai-elo-tag').textContent = `ELO ${aiElo}`;
+}
+
+// ═══════════════════════════════════════════
+//  HEX GRID (cube coords, radius 4)
+// ═══════════════════════════════════════════
+const RADIUS = 4;
+function genCells(R) {
+  const out = [];
+  for (let q=-R;q<=R;q++)
+    for (let r=Math.max(-R,-q-R);r<=Math.min(R,-q+R);r++)
+      out.push([q,r,-q-r]);
+  return out;
+}
+const CELLS = genCells(RADIUS);
+const KEY   = (q,r) => `${q},${r}`;
+
+const DIR1 = [[1,-1,0],[1,0,-1],[0,1,-1],[-1,1,0],[-1,0,1],[0,-1,1]];
+const DIR2 = [
+  [2,-2,0],[2,-1,-1],[2,0,-2],[1,1,-2],[0,2,-2],[-1,2,-1],
+  [-2,2,0],[-2,1,1],[-2,0,2],[-1,-1,2],[0,-2,2],[1,-2,1]
+];
+const onBoard = (q,r,s) => Math.max(Math.abs(q),Math.abs(r),Math.abs(s)) <= RADIUS;
+const nb1 = (q,r,s) => DIR1.map(([a,b,c])=>[q+a,r+b,s+c]).filter(([a,b,c])=>onBoard(a,b,c));
+const nb2 = (q,r,s) => DIR2.map(([a,b,c])=>[q+a,r+b,s+c]).filter(([a,b,c])=>onBoard(a,b,c));
+
+// ═══════════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════════
+let board = {}, selected = null, currentPlayer = 1, gameOver = false, mode = 'pvp', aiThinking = false;
+
+const HEX_SIZE = 28, SVG_PAD = 44;
+function hexPx(q,r){ return [HEX_SIZE*(Math.sqrt(3)*q+Math.sqrt(3)/2*r), HEX_SIZE*(1.5*r)]; }
+function corners(cx,cy,s){
+  const p=[];for(let i=0;i<6;i++){const a=Math.PI/180*(60*i+30);p.push([cx+s*Math.cos(a),cy+s*Math.sin(a)]);}return p;
+}
+function pts(arr){ return arr.map(p=>p.join(',')).join(' '); }
+
+function initBoard() {
+  board = {};
+  CELLS.forEach(([q,r]) => { board[KEY(q,r)] = 0; });
+  // Red stones
+  board[KEY( RADIUS,-RADIUS)] = 1;
+  board[KEY(-RADIUS, 0)]      = 1;
+  board[KEY( 0,  RADIUS)]     = 1;
+  // Blue stones
+  board[KEY(-RADIUS, RADIUS)] = 2;
+  board[KEY( RADIUS, 0)]      = 2;
+  board[KEY( 0, -RADIUS)]     = 2;
+
+  selected = null; currentPlayer = 1; gameOver = false; aiThinking = false;
+
+  if (mode === 'ai') {
+    currentAIELO = rollAIELO();
+    updateAIPips(currentAIELO);
+    document.getElementById('ai-row').style.opacity = '1';
+  } else {
+    document.getElementById('ai-row').style.opacity = '0.25';
+  }
+}
+
+// ═══════════════════════════════════════════
+//  SVG BUILD
+// ═══════════════════════════════════════════
+function buildSVG() {
+  const svg = document.getElementById('board-svg');
+  let mnX=1e9,mxX=-1e9,mnY=1e9,mxY=-1e9;
+  CELLS.forEach(([q,r])=>{
+    const[cx,cy]=hexPx(q,r);
+    mnX=Math.min(mnX,cx-HEX_SIZE);mxX=Math.max(mxX,cx+HEX_SIZE);
+    mnY=Math.min(mnY,cy-HEX_SIZE);mxY=Math.max(mxY,cy+HEX_SIZE);
+  });
+  const W=mxX-mnX+SVG_PAD*2, H=mxY-mnY+SVG_PAD*2;
+  const ox=-mnX+SVG_PAD, oy=-mnY+SVG_PAD;
+  svg.setAttribute('width',W); svg.setAttribute('height',H);
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.innerHTML='';
+
+  const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+  defs.innerHTML=`
+    <radialGradient id="gRed" cx="35%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#f1948a"/><stop offset="45%" stop-color="#c0392b"/><stop offset="100%" stop-color="#7b241c"/>
+    </radialGradient>
+    <radialGradient id="gBlue" cx="35%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#85c1e9"/><stop offset="45%" stop-color="#2980b9"/><stop offset="100%" stop-color="#154360"/>
+    </radialGradient>
+    <radialGradient id="gEmpty" cx="40%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#3d2a18"/><stop offset="100%" stop-color="#1a0f08"/>
+    </radialGradient>
+    <radialGradient id="gSelR" cx="35%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#ff9090"/><stop offset="45%" stop-color="#e74c3c"/><stop offset="100%" stop-color="#c0392b"/>
+    </radialGradient>
+    <radialGradient id="gSelB" cx="35%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#aadcf5"/><stop offset="45%" stop-color="#3498db"/><stop offset="100%" stop-color="#2980b9"/>
+    </radialGradient>
+    <filter id="sh" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="rgba(0,0,0,.75)"/>
+    </filter>
+    <filter id="glo" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  `;
+  svg.appendChild(defs);
+
+  CELLS.forEach(([q,r,s])=>{
+    const[cx0,cy0]=hexPx(q,r); const cx=cx0+ox, cy=cy0+oy;
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.id=`cell-${q}-${r}`; g.style.cursor='pointer';
+    g.addEventListener('click',()=>handleClick(q,r,s));
+
+    const mk=(tag,attr)=>{const e=document.createElementNS('http://www.w3.org/2000/svg',tag);Object.entries(attr).forEach(([k,v])=>e.setAttribute(k,v));return e;};
+
+    g.appendChild(mk('polygon',{points:pts(corners(cx,cy,HEX_SIZE-1.5)),fill:'url(#gEmpty)',stroke:'#6b4a28','stroke-width':'1.3',class:'hex-bg'}));
+    g.appendChild(mk('polygon',{points:pts(corners(cx,cy,(HEX_SIZE-1.5)*.82)),fill:'rgba(0,0,0,.18)',stroke:'rgba(255,255,255,.04)','stroke-width':'0.8','pointer-events':'none'}));
+    g.appendChild(mk('polygon',{points:pts(corners(cx,cy,HEX_SIZE-3)),fill:'transparent',stroke:'transparent','stroke-width':'2.5',class:'hint','pointer-events':'none'}));
+    g.appendChild(mk('circle',{cx,cy,r:HEX_SIZE*.56,fill:'none',class:'stone','pointer-events':'none'}));
+    g.appendChild(mk('ellipse',{cx:cx-HEX_SIZE*.14,cy:cy-HEX_SIZE*.18,rx:HEX_SIZE*.19,ry:HEX_SIZE*.11,fill:'rgba(255,255,255,0)',class:'hl','pointer-events':'none'}));
+    svg.appendChild(g);
+  });
+}
+
+// ═══════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════
+const clones1 = (q,r,s) => nb1(q,r,s).filter(([a,b])=>board[KEY(a,b)]===0).map(([a,b])=>KEY(a,b));
+const clones2 = (q,r,s) => nb2(q,r,s).filter(([a,b])=>board[KEY(a,b)]===0).map(([a,b])=>KEY(a,b));
+
+function renderBoard() {
+  const cSet=new Set(), jSet=new Set();
+  if (selected && !gameOver) {
+    const[sq,sr]=selected.split(',').map(Number), ss=-sq-sr;
+    clones1(sq,sr,ss).forEach(k=>cSet.add(k));
+    clones2(sq,sr,ss).forEach(k=>jSet.add(k));
+  }
+  CELLS.forEach(([q,r,s])=>{
+    const k=KEY(q,r), v=board[k];
+    const g=document.getElementById(`cell-${q}-${r}`); if(!g) return;
+    const stone=g.querySelector('.stone'), hl=g.querySelector('.hl'),
+          bg=g.querySelector('.hex-bg'),  hint=g.querySelector('.hint');
+    const sel=selected===k, isC=cSet.has(k), isJ=jSet.has(k);
+
+    if(v===1){bg.setAttribute('fill','#2a1510');bg.setAttribute('stroke',sel?'#ff6060':'#8b2020');bg.setAttribute('stroke-width',sel?'2.5':'1.3');}
+    else if(v===2){bg.setAttribute('fill','#0e1a2a');bg.setAttribute('stroke',sel?'#60c0ff':'#1a5080');bg.setAttribute('stroke-width',sel?'2.5':'1.3');}
+    else{bg.setAttribute('fill','url(#gEmpty)');bg.setAttribute('stroke','#6b4a28');bg.setAttribute('stroke-width','1.3');}
+
+    if(v===1){stone.setAttribute('fill',sel?'url(#gSelR)':'url(#gRed)');stone.setAttribute('filter',sel?'url(#glo)':'url(#sh)');hl.setAttribute('fill','rgba(255,255,255,.28)');}
+    else if(v===2){stone.setAttribute('fill',sel?'url(#gSelB)':'url(#gBlue)');stone.setAttribute('filter',sel?'url(#glo)':'url(#sh)');hl.setAttribute('fill','rgba(255,255,255,.22)');}
+    else{stone.setAttribute('fill','none');stone.removeAttribute('filter');hl.setAttribute('fill','rgba(255,255,255,0)');}
+
+    if(isC){hint.setAttribute('stroke','rgba(240,200,80,.78)');hint.setAttribute('fill','rgba(240,200,80,.09)');}
+    else if(isJ){hint.setAttribute('stroke','rgba(80,210,240,.68)');hint.setAttribute('fill','rgba(80,210,240,.07)');}
+    else{hint.setAttribute('stroke','transparent');hint.setAttribute('fill','transparent');}
+  });
+
+  let r=0,b=0; Object.values(board).forEach(v=>{if(v===1)r++;else if(v===2)b++;});
+  document.getElementById('score-red').textContent=r;
+  document.getElementById('score-blue').textContent=b;
+}
+
+function updateStatus(msg) {
+  document.getElementById('status-msg').textContent = msg ||(currentPlayer===1?'Rot ist am Zug':(aiThinking?'KI denkt…':'Blau ist am Zug'));
+  document.getElementById('tag-red').classList.toggle('active', currentPlayer===1);
+  document.getElementById('tag-blue').classList.toggle('active', currentPlayer===2);
+}
+
+// ═══════════════════════════════════════════
+//  GAME LOGIC
+// ═══════════════════════════════════════════
+function handleClick(q,r,s) {
+  if (gameOver||aiThinking) return;
+  if (mode==='ai'&&currentPlayer===2) return;
+  const k=KEY(q,r), v=board[k];
+  if (v===currentPlayer) { selected=(selected===k)?null:k; renderBoard(); return; }
+  if (selected&&v===0) {
+    const[sq,sr]=selected.split(',').map(Number), ss=-sq-sr;
+    const c=clones1(sq,sr,ss), j=clones2(sq,sr,ss);
+    if(c.includes(k)) doMove(sq,sr,ss,q,r,s,'clone');
+    else if(j.includes(k)) doMove(sq,sr,ss,q,r,s,'jump');
+    else { selected=null; renderBoard(); }
+    return;
+  }
+  selected=null; renderBoard();
+}
+
+function doMove(fq,fr,fs,tq,tr,ts,type) {
+  board[KEY(tq,tr)]=currentPlayer;
+  if(type==='jump') board[KEY(fq,fr)]=0;
+  nb1(tq,tr,ts).forEach(([nq,nr])=>{
+    const nk=KEY(nq,nr);
+    if(board[nk]!==0&&board[nk]!==currentPlayer) board[nk]=currentPlayer;
+  });
+  selected=null; renderBoard();
+  const next=currentPlayer===1?2:1;
+  if(!hasMoves(next)) { endGame(); return; }
+  currentPlayer=next; updateStatus();
+  if(mode==='ai'&&currentPlayer===2&&!gameOver) { aiThinking=true; updateStatus('KI denkt…'); setTimeout(doAI,320); }
+}
+
+function hasMoves(p) {
+  return CELLS.some(([q,r,s])=>{
+    if(board[KEY(q,r)]!==p) return false;
+    return clones1(q,r,s).length>0||clones2(q,r,s).length>0;
+  });
+}
+
+function endGame() {
+  gameOver=true;
+  let red=0,blue=0; Object.values(board).forEach(v=>{if(v===1)red++;else if(v===2)blue++;});
+  const winner=red>blue?1:(blue>red?2:0);
+
+  let delta=0;
+  if(mode==='ai') { delta=applyELOResult(winner===1?1:winner===2?0:0.5); updateELODisplay(delta); }
+
+  const title=document.getElementById('win-title');
+  const sub=document.getElementById('win-sub');
+  const ebox=document.getElementById('win-elo-box');
+
+  if(winner===1){title.textContent='ROT GEWINNT';title.style.background='linear-gradient(135deg,#7b241c,#e74c3c,#7b241c)';sub.textContent=`${red} zu ${blue} Steine`;}
+  else if(winner===2){title.textContent='BLAU GEWINNT';title.style.background='linear-gradient(135deg,#154360,#2980b9,#154360)';sub.textContent=`${blue} zu ${red} Steine`;}
+  else{title.textContent='UNENTSCHIEDEN';title.style.background='linear-gradient(135deg,var(--gold-dark),var(--gold-light),var(--gold-dark))';sub.textContent=`Gleichstand: ${red} zu ${blue}`;}
+  title.style['-webkit-background-clip']='text';title.style['-webkit-text-fill-color']='transparent';title.style['background-clip']='text';
+
+  if(mode==='ai'){
+    const sign=delta>=0?'+':''; const rank=getRank(playerELO);
+    ebox.innerHTML=`ELO: <strong style="color:${delta>=0?'#7dcea0':'#e59866'}">${sign}${delta}</strong> → <strong>${playerELO}</strong>&nbsp;&nbsp;·&nbsp;&nbsp;<span style="color:${rank.color}">${rank.name}</span>`;
+    ebox.style.display='block';
+  } else { ebox.style.display='none'; }
+
+  updateStatus(winner===1?'Rot gewinnt!':winner===2?'Blau / KI gewinnt!':'Unentschieden!');
+  setTimeout(()=>document.getElementById('win-banner').classList.add('show'), 500);
+}
+
+// ═══════════════════════════════════════════
+//  AI with variable strength
+// ═══════════════════════════════════════════
+function scoreBoard() {
+  let s=0; Object.values(board).forEach(v=>{if(v===2)s++;else if(v===1)s--;}); return s;
+}
+function allMoves(p) {
+  const out=[];
+  CELLS.forEach(([q,r,s])=>{
+    if(board[KEY(q,r)]!==p) return;
+    clones1(q,r,s).forEach(tk=>{const[tq,tr]=tk.split(',').map(Number);out.push({fq:q,fr:r,fs:s,tq,tr,ts:-tq-tr,type:'clone'});});
+    clones2(q,r,s).forEach(tk=>{const[tq,tr]=tk.split(',').map(Number);out.push({fq:q,fr:r,fs:s,tq,tr,ts:-tq-tr,type:'jump'});});
+  });
+  return out;
+}
+function applyMove(mv,p) {
+  const snap={...board};
+  board[KEY(mv.tq,mv.tr)]=p;
+  if(mv.type==='jump') board[KEY(mv.fq,mv.fr)]=0;
+  nb1(mv.tq,mv.tr,mv.ts).forEach(([nq,nr])=>{const nk=KEY(nq,nr);if(board[nk]!==0&&board[nk]!==p)board[nk]=p;});
+  return snap;
+}
+function minimax(depth,isMax,alpha,beta) {
+  if(depth===0) return scoreBoard();
+  const p=isMax?2:1, moves=allMoves(p);
+  if(!moves.length) return scoreBoard();
+  let best=isMax?-Infinity:Infinity;
+  for(const mv of moves){
+    const snap=applyMove(mv,p);
+    const sc=minimax(depth-1,!isMax,alpha,beta);
+    board=snap;
+    if(isMax){best=Math.max(best,sc);alpha=Math.max(alpha,sc);}
+    else{best=Math.min(best,sc);beta=Math.min(beta,sc);}
+    if(beta<=alpha) break;
+  }
+  return best;
+}
+
+function doAI() {
+  const moves=allMoves(2);
+  if(!moves.length){aiThinking=false;endGame();return;}
+  const{depth,randomness}=aiParams(currentAIELO);
+
+  let chosenMove;
+
+  if(depth===0||Math.random()<randomness*0.65) {
+    // Pure random
+    chosenMove=moves[Math.floor(Math.random()*moves.length)];
+  } else {
+    // Minimax, with blunder chance
+    let best=-Infinity, bestMove=null;
+    for(const mv of moves){
+      const snap=applyMove(mv,2);
+      const sc=minimax(depth-1,false,-Infinity,Infinity);
+      board=snap;
+      if(sc>best){best=sc;bestMove=mv;}
+    }
+    // Blunder: pick random instead of best (more often at low ELO)
+    if(Math.random()<randomness*0.45)
+      chosenMove=moves[Math.floor(Math.random()*moves.length)];
+    else
+      chosenMove=bestMove||moves[Math.floor(Math.random()*moves.length)];
+  }
+
+  doMove(chosenMove.fq,chosenMove.fr,chosenMove.fs,chosenMove.tq,chosenMove.tr,chosenMove.ts,chosenMove.type);
+  aiThinking=false;
+}
+
+// ═══════════════════════════════════════════
+//  CONTROLS & INIT
+// ═══════════════════════════════════════════
+function setMode(m) {
+  mode=m;
+  document.getElementById('btn-pvp').classList.toggle('active',m==='pvp');
+  document.getElementById('btn-ai').classList.toggle('active',m==='ai');
+  resetGame();
+}
+function resetGame() {
+  document.getElementById('win-banner').classList.remove('show');
+  initBoard(); buildSVG(); renderBoard(); updateStatus('Rot beginnt');
+}
+
+updateELODisplay(0);
+initBoard(); buildSVG(); renderBoard(); updateStatus('Rot beginnt');
+</script>
+</body>
+</html>
