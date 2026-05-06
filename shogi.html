@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>将棋 Shogi 3D</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0804;font-family:'Noto Serif JP',serif;color:#e8d8b8}
+#c3d{position:fixed;inset:0;width:100%;height:100%}
+
+/* ─── TOP BAR ─── */
+#topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(8,6,3,.88);border-bottom:1px solid rgba(212,175,55,.2);backdrop-filter:blur(6px);flex-wrap:wrap}
+.logo{font-size:17px;font-weight:700;letter-spacing:4px;color:#d4af37;margin-right:4px}
+.tbtn{background:rgba(255,255,255,.05);border:1px solid rgba(212,175,55,.28);border-radius:12px;padding:3px 10px;font-size:11px;cursor:pointer;color:#a08040;font-family:inherit;transition:.2s;white-space:nowrap}
+.tbtn:hover,.tbtn.on{border-color:#d4af37;color:#d4af37;background:rgba(212,175,55,.1)}
+#mbadge{padding:3px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(61,46,26,.6);border-radius:12px;font-size:10px;color:#7a6040}
+.helo{font-family:'JetBrains Mono',monospace;font-size:17px;color:#d4af37;font-weight:600;margin-left:auto}
+
+/* ─── SIDE PANELS ─── */
+.panel{position:fixed;top:48px;bottom:0;width:185px;display:flex;flex-direction:column;gap:7px;padding:8px 7px;overflow-y:auto;scrollbar-width:thin;z-index:20}
+#lpanel{left:0;background:linear-gradient(to right,rgba(8,6,3,.9) 70%,transparent)}
+#rpanel{right:0;background:linear-gradient(to left,rgba(8,6,3,.9) 70%,transparent)}
+.pb{background:rgba(18,13,7,.88);border:1px solid rgba(50,38,20,.8);border-radius:8px;padding:9px 10px;backdrop-filter:blur(4px)}
+.pb h4{font-size:9px;letter-spacing:2px;color:#6a5030;margin-bottom:6px;text-transform:uppercase}
+.hand-row{display:flex;flex-wrap:wrap;gap:4px;min-height:28px}
+
+/* Hand piece tokens */
+.hp{width:32px;height:36px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border-radius:3px;cursor:pointer;position:relative;transition:.15s;border:1px solid transparent}
+.hp.s{background:linear-gradient(160deg,#fefae8,#e8d070);color:#1a1208;box-shadow:0 2px 5px rgba(0,0,0,.4)}
+.hp.g{background:linear-gradient(160deg,#2a2010,#1a1208);color:#c8a858;box-shadow:0 2px 5px rgba(0,0,0,.5)}
+.hp:hover{transform:translateY(-2px)}
+.hp.sel{border-color:#d4af37;box-shadow:0 0 8px rgba(212,175,55,.5)}
+.hpc{position:absolute;bottom:-2px;right:-2px;background:#d4af37;color:#1a1208;font-size:8px;width:12px;height:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700}
+
+/* Buttons */
+.btn{background:none;border:1px solid rgba(50,38,20,.8);color:#b8a070;padding:5px 10px;border-radius:7px;font-size:11px;cursor:pointer;font-family:inherit;transition:.15s;width:100%;text-align:center;margin-top:2px}
+.btn:hover{border-color:#d4af37;color:#d4af37}
+.btn.pri{border-color:rgba(212,175,55,.5);color:#d4af37}
+.btn.blue{border-color:rgba(74,144,217,.5);color:#6aacf0}
+.btn.grn{border-color:rgba(39,174,96,.5);color:#4abe80}
+.btn.red{border-color:rgba(192,57,43,.5);color:#e05040}
+.mv-hist{max-height:100px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:9px;color:#6a5030;line-height:1.9;scrollbar-width:thin}
+.mv-hist .last{color:#d4af37}
+
+/* Status */
+#sbar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(8,6,3,.85);border:1px solid rgba(212,175,55,.2);border-radius:18px;padding:5px 18px;font-size:12px;color:#907850;letter-spacing:1px;backdrop-filter:blur(6px);white-space:nowrap;pointer-events:none}
+#sbar.chk{color:#e05040;border-color:rgba(224,80,64,.4);animation:spulse .8s ease-in-out infinite}
+#sbar.think{color:#e08030}
+@keyframes spulse{0%,100%{opacity:1}50%{opacity:.5}}
+#camhint{position:fixed;bottom:42px;left:50%;transform:translateX(-50%);font-size:9px;color:rgba(140,110,60,.55);pointer-events:none;z-index:20;white-space:nowrap;letter-spacing:.5px}
+
+/* Overlays */
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:100;align-items:center;justify-content:center}
+.ov.on{display:flex}
+.obox{background:#12100a;border:1px solid #3d2e1a;border-radius:12px;padding:24px 30px;text-align:center;max-width:340px;width:90%;animation:pin .2s ease}
+@keyframes pin{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+.obox h2{font-size:22px;color:#d4af37;margin-bottom:5px}
+.obox p{color:#6a5030;font-size:12px;margin-bottom:12px}
+.edelt{font-family:'JetBrains Mono',monospace;font-size:18px;margin:7px 0}
+.edelt.p{color:#27ae60}.edelt.m{color:#c0392b}
+.probts{display:flex;gap:10px;justify-content:center;margin-top:11px}
+.probt{background:#fdf3d8;border:2px solid #c0a060;border-radius:7px;padding:10px 14px;cursor:pointer;transition:.15s}
+.probt:hover{border-color:#d4af37}
+.probt .pk{font-size:22px;color:#c0392b;display:block}
+.probt.nop .pk{color:#1a1208}
+.probt .pl{font-size:9px;color:#4a3520;margin-top:2px}
+
+/* Menu */
+#menu{position:fixed;inset:0;background:rgba(5,3,1,.97);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:20px}
+#menu.h{display:none}
+#menu h1{font-size:46px;color:#d4af37;letter-spacing:10px;text-shadow:0 0 60px rgba(212,175,55,.3)}
+#menu p.sub{color:#6a5030;font-size:10px;letter-spacing:4px}
+.mcs{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;max-width:760px}
+.mc{background:rgba(20,15,8,.9);border:1px solid #3d2e1a;border-radius:11px;padding:20px 16px;width:170px;cursor:pointer;transition:.2s;text-align:center}
+.mc:hover{border-color:#d4af37;transform:translateY(-3px);box-shadow:0 10px 28px rgba(212,175,55,.14)}
+.mc .ico{font-size:26px;margin-bottom:7px}
+.mc h3{color:#d4af37;font-size:13px;margin-bottom:3px}
+.mc p{color:#6a5030;font-size:10px;line-height:1.6}
+.elobar{display:flex;align-items:center;gap:12px;background:rgba(20,15,8,.9);border:1px solid #3d2e1a;border-radius:9px;padding:10px 16px;width:100%;max-width:680px}
+.pips{display:flex;gap:3px;margin-left:auto}
+.pip{width:7px;height:18px;border-radius:2px;background:#3d2e1a;transition:.3s}
+.pip.on{background:#d4af37}
+.helob{font-family:'JetBrains Mono',monospace;font-size:22px;color:#d4af37;font-weight:600}
+.infob{background:rgba(20,15,8,.9);border:1px solid #3d2e1a;border-radius:9px;padding:11px 15px;font-size:11px;color:#6a5030;line-height:1.9;max-width:680px;width:100%}
+.infob strong{color:#d4af37}
+
+/* Ki/Hint panels */
+.learnp{background:rgba(18,13,7,.88);border:1px solid rgba(74,144,217,.35);border-radius:8px;padding:9px 10px}
+.lt{font-size:9px;letter-spacing:2px;color:#4a90d9;margin-bottom:5px;text-transform:uppercase}
+.hbox{background:rgba(8,6,3,.6);border:1px solid rgba(74,144,217,.2);border-radius:6px;padding:7px 8px;margin-bottom:6px}
+.hwhy{font-size:10px;line-height:1.8;color:#c8b080;min-height:28px}
+.hwhy em{color:#d4af37;font-style:normal}
+.hstrat{font-size:9px;color:#6a5030;margin-top:3px;line-height:1.6;font-style:italic}
+.fggrid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px}
+.fgc{background:rgba(8,6,3,.7);border:1px solid #3d2e1a;border-radius:5px;padding:5px 6px;cursor:pointer;transition:.15s}
+.fgc:hover{border-color:#4a90d9}
+.fgc .fk{font-size:14px;font-weight:700;color:#fdf3d8}
+.fgc .fn{font-size:8px;color:#6a5030}
+.fdet{background:rgba(8,6,3,.7);border:1px solid rgba(74,144,217,.25);border-radius:6px;padding:8px;margin-bottom:6px;font-size:9px;line-height:1.8;color:#c8b080;display:none}
+.fdet.on{display:block}
+.fdet strong{color:#d4af37}
+.kipips{display:flex;gap:2px}
+.kp{width:5px;height:12px;border-radius:2px;background:#3d2e1a}
+.kp.on{background:#d4af37}
+.ebar{height:5px;background:#3d2e1a;border-radius:3px;overflow:hidden;margin:4px 0}
+.ebarfill{height:100%;border-radius:3px;transition:width .5s;background:linear-gradient(to right,#d4af37,#27ae60)}
+</style>
+</head>
+<body>
+<canvas id="c3d"></canvas>
+
+<!-- MENU -->
+<div id="menu">
+  <h1>将棋</h1>
+  <p class="sub">JAPANISCHES SCHACH · 3D</p>
+  <div class="elobar">
+    <div><div class="helob" id="m-elo">1000</div><div style="font-size:10px;color:#6a5030;letter-spacing:1px" id="m-rank">NEULING</div></div>
+    <div class="pips" id="m-pips"></div>
+    <button class="btn red" onclick="resetElo()" style="width:auto;font-size:10px;padding:3px 8px;margin-left:8px;margin-top:0">Reset</button>
+  </div>
+  <div class="mcs">
+    <div class="mc" onclick="startGame('2p')"><div class="ico">👥</div><h3>2 Spieler</h3><p>Lokal am selben Gerät</p></div>
+    <div class="mc" onclick="startGame('vs-ki')"><div class="ico">⚔️</div><h3>vs. KI</h3><p>ELO-basierte Stärke, deine Wertung verändert sich</p></div>
+    <div class="mc" onclick="startGame('learn')"><div class="ico">🎓</div><h3>Lernmodus</h3><p>KI-Hinweise auf gleichem Niveau wie Gegner</p></div>
+    <div class="mc" onclick="showOnline()"><div class="ico">🌐</div><h3>Online</h3><p>Fernschach via Raumcode</p></div>
+  </div>
+  <div class="infob">
+    <strong>Du = Sente ▲</strong> helle Figuren, unten, zieht zuerst &nbsp;·&nbsp; <strong>Gote ▽</strong> dunkle Figuren, oben (KI)<br>
+    <strong>Drop-Regel ★</strong> Geschlagene Figuren kommen in die Hand und können wieder eingesetzt werden!<br>
+    <strong>Kamera</strong> Maus/Finger ziehen = drehen &nbsp;·&nbsp; Rad/Pinch = Zoom &nbsp;·&nbsp; Rechtsklick = Pan
+  </div>
+</div>
+
+<!-- ONLINE -->
+<div class="ov" id="online-ov">
+  <div class="obox">
+    <h2>🌐 Online</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <button class="btn pri" onclick="createRoom()">Neuen Raum erstellen</button>
+      <div style="text-align:center;font-size:10px;color:#6a5030">— oder —</div>
+      <input id="jin" style="background:#1a1208;border:1px solid #3d2e1a;border-radius:7px;padding:8px;color:#e8d8b8;font-family:'JetBrains Mono',monospace;font-size:14px;text-align:center;letter-spacing:4px;outline:none;width:100%" placeholder="RAUMCODE" maxlength="6" oninput="this.value=this.value.toUpperCase()">
+      <button class="btn blue" onclick="joinRoom()">Beitreten</button>
+      <div id="rinfo" style="display:none;background:#1a1208;border:1px solid rgba(212,175,55,.3);border-radius:7px;padding:11px;text-align:center">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:22px;color:#d4af37;letter-spacing:6px" id="rcode"></div>
+        <div style="font-size:10px;color:#6a5030;margin-top:3px" id="rrole"></div>
+        <div style="font-size:11px;margin-top:6px;color:#7a6040" id="rst">⏳ Warte…</div>
+      </div>
+      <button class="btn" onclick="closeOv('online-ov')">← Zurück</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESULT -->
+<div class="ov" id="res-ov">
+  <div class="obox">
+    <h2 id="res-t"></h2><p id="res-m"></p>
+    <div class="edelt" id="res-d"></div>
+    <div style="font-size:10px;color:#6a5030;margin-bottom:11px" id="res-r"></div>
+    <div style="display:flex;gap:7px;justify-content:center">
+      <button class="btn pri" onclick="newGame()">Neues Spiel</button>
+      <button class="btn" onclick="goMenu()">Menü</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROMOTE -->
+<div class="ov" id="pro-ov">
+  <div class="obox" style="max-width:240px">
+    <h2 style="font-size:16px;margin-bottom:4px">Befördern?</h2>
+    <p style="font-size:11px">Diese Figur kann befördert werden.</p>
+    <div class="probts" id="probts"></div>
+  </div>
+</div>
+
+<!-- GAME UI -->
+<div id="topbar">
+  <div class="logo">将棋</div>
+  <button class="tbtn" onclick="goMenu()">← Menü</button>
+  <button class="tbtn" onclick="newGame()">↺ Neu</button>
+  <button class="tbtn" onclick="resetCam()">🎥 Reset</button>
+  <div id="mbadge"></div>
+  <div class="helo" id="h-elo">1000</div>
+</div>
+
+<div class="panel" id="lpanel">
+  <div class="pb"><h4>▽ Gote Hand</h4><div class="hand-row" id="gh"></div></div>
+  <div class="pb" id="kip" style="display:none">
+    <h4>KI Stärke</h4>
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#d4af37" id="kiv">1000</div>
+      <div class="kipips" id="kpp"></div>
+    </div>
+    <div style="font-size:10px;color:#6a5030" id="krl">Neuling</div>
+  </div>
+  <div class="pb" id="fgp" style="display:none">
+    <div class="lt">Figuren-Guide</div>
+    <div class="fggrid" id="fgg"></div>
+    <div class="fdet" id="fdt"></div>
+    <div style="font-size:8px;color:#6a5030">Klicken für Details</div>
+  </div>
+  <div class="pb"><h4>Züge</h4><div class="mv-hist" id="mvh"></div></div>
+</div>
+
+<div class="panel" id="rpanel">
+  <div class="pb"><h4>▲ Sente Hand</h4><div class="hand-row" id="sh"></div></div>
+  <div class="pb" id="elop" style="display:none">
+    <h4>Deine ELO</h4>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#d4af37" id="g-elo">1000</div>
+    <div style="font-size:10px;color:#6a5030;margin-top:1px" id="g-rank">Neuling</div>
+    <div class="ebar"><div class="ebarfill" id="ebar" style="width:50%"></div></div>
+    <div style="font-size:9px;color:#6a5030;text-align:center" id="elbl">ausgeglichen</div>
+  </div>
+  <div id="hntp" class="learnp" style="display:none">
+    <div class="lt">🎓 Hinweis</div>
+    <div class="hbox">
+      <div style="font-size:9px;letter-spacing:1px;color:#4a90d9;margin-bottom:3px">BESTER ZUG</div>
+      <div class="hwhy" id="hwhy">Drücke Hinweis für Erklärung.</div>
+      <div class="hstrat" id="hstrat"></div>
+    </div>
+    <button class="btn blue" onclick="getHint()">Hinweis ↗</button>
+    <button class="btn grn" id="exh" style="display:none" onclick="execHint()">Ausführen ✓</button>
+    <button class="btn" id="skpb" style="display:none;font-size:10px" onclick="skipAI()">KI überspringen ⏭</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <button class="btn" onclick="undoMove()">↩ Rückgängig</button>
+    <button class="btn red" onclick="resign()">Aufgeben</button>
+  </div>
+</div>
+
+<div id="sbar">▲ Sente am Zug</div>
+<div id="camhint">🖱 Ziehen = drehen · Rad = Zoom · Rechtsklick = Pan</div>
+
+<div class="ov" id="tut-ov" style="z-index:300">
+  <div class="obox" style="max-width:500px;text-align:left">
+    <h2 style="text-align:center;margin-bottom:14px;font-size:20px">🎓 Willkommen im Lernmodus</h2>
+    <div id="tut-content" style="font-size:12px;line-height:2;color:#c8b080;min-height:120px"></div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;align-items:center">
+      <button class="btn" id="tut-prev" onclick="tutNav(-1)" style="width:auto;padding:5px 14px">← Zurück</button>
+      <div style="font-size:10px;color:#6a5030;min-width:40px;text-align:center" id="tut-pg">1 / 6</div>
+      <button class="btn pri" id="tut-next" onclick="tutNav(1)" style="width:auto;padding:5px 14px">Weiter →</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ══════════════════════════════════════════
+//  SHOGI ENGINE
+// ══════════════════════════════════════════
+const PD={'王':{m:[[0,1],[1,0],[-1,0],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]},'玉':{m:[[0,1],[1,0],[-1,0],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]},'飛':{s:[[0,1],[0,-1],[1,0],[-1,0]]},'龍':{s:[[0,1],[0,-1],[1,0],[-1,0]],e:[[1,1],[1,-1],[-1,1],[-1,-1]]},'角':{s:[[1,1],[1,-1],[-1,1],[-1,-1]]},'馬':{s:[[1,1],[1,-1],[-1,1],[-1,-1]],e:[[0,1],[0,-1],[1,0],[-1,0]]},'金':{m:[[0,-1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1]]},'銀':{m:[[0,-1],[1,-1],[-1,-1],[1,1],[-1,1]]},'桂':{m:[[-1,-2],[1,-2]]},'香':{s:[[0,-1]]},'歩':{m:[[0,-1]]},'と':{m:[[0,-1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1]]},'成銀':{m:[[0,-1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1]]},'成桂':{m:[[0,-1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1]]},'成香':{m:[[0,-1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1]]}};
+const PRO={'飛':'龍','角':'馬','銀':'成銀','桂':'成桂','香':'成香','歩':'と'};
+const UNPRO={'龍':'飛','馬':'角','成銀':'銀','成桂':'桂','成香':'香','と':'歩'};
+const PV={'歩':100,'と':600,'香':300,'成香':600,'桂':350,'成桂':600,'銀':600,'成銀':700,'金':700,'飛':1200,'龍':1600,'角':1000,'馬':1400,'王':10000,'玉':10000};
+const FN={'王':'König','玉':'König','飛':'Turm','龍':'Drachen-König','角':'Läufer','馬':'Drachen-Pferd','金':'Goldgeneral','銀':'Silbergeneral','成銀':'Silber+','桂':'Springer','成桂':'Springer+','香':'Lanze','成香':'Lanze+','歩':'Bauer','と':'Bauer+'};
+const FD={'王':['König','Ein Feld alle Richtungen.','Ecke = sicherer. Mino-Festung!'],'飛':['Turm','Beliebig weit gerade. Stärkste Figur. → 龍','Turm-Drop oft spielentscheidend.'],'角':['Läufer','Beliebig weit diagonal. → 馬','Drop auf 5. Reihe = Gabel-Drohung.'],'金':['Goldgeneral','Alle außer schräg hinten. Kann nicht befördert werden.','Ideal als Königsschutz.'],'銀':['Silbergeneral','Diagonal + gerade vor. → wie Gold','Silberturm = klassische Angriffsformation.'],'桂':['Springer','2 vor + 1 seitlich, springt über andere! → wie Gold','Greift Figuren an die ihn nicht erreichen.'],'香':['Lanze','Beliebig weit vorwärts. → wie Gold','Drop auf König-Spalte = enormer Druck.'],'歩':['Bauer','Ein Feld vor. Nifu-Verbot! → と','Drop auf Reihe 6 = Figuren einengen.']};
+const RANKS=[[0,'Neuling'],[1100,'Anfänger'],[1250,'Lehrling'],[1400,'Fortgeschritten'],[1600,'Experte'],[1800,'Meister'],[2000,'Großmeister'],[2300,'Legende']];
+function getRank(e){let r=RANKS[0][1];for(const[t,n]of RANKS)if(e>=t)r=n;return r}
+function getElo(){return parseInt(localStorage.getItem('shogi_elo')||'1000')}
+function setElo(v){localStorage.setItem('shogi_elo',String(v))}
+function resetElo(){if(confirm('ELO zurücksetzen?')){setElo(1000);updElo()}}
+function calcElo(my,op,win){return Math.round(32*((win?1:0)-1/(1+Math.pow(10,(op-my)/400))))}
+function updElo(){
+  const e=getElo(),r=getRank(e);
+  for(const id of['h-elo','m-elo','g-elo']){const el=document.getElementById(id);if(el)el.textContent=e}
+  const mr=document.getElementById('m-rank');if(mr)mr.textContent=r.toUpperCase();
+  const gr=document.getElementById('g-rank');if(gr)gr.textContent=r;
+  const mp=document.getElementById('m-pips');
+  if(mp){const f=Math.floor(Math.min(e/2300,1)*10);mp.innerHTML=Array.from({length:10},(_,i)=>`<div class="pip${i<f?' on':''}"></div>`).join('')}
+}
+
+// Engine
+function rawMvs(b,s,fr,fc){
+  const cell=b[fr][fc];if(!cell||cell.s!==s)return[];
+  const mvs=[],dir=s==='sente'?-1:1,pd=PD[cell.p]||{};
+  if(pd.s)for(const[dc,dr]of pd.s){let r=fr+dr*dir,c=fc+dc;while(r>=0&&r<9&&c>=0&&c<9){if(b[r][c]){if(b[r][c].s!==s)mvs.push([r,c]);break}mvs.push([r,c]);r+=dr*dir;c+=dc}}
+  if(pd.e)for(const[dc,dr]of pd.e){const r=fr+dr*dir,c=fc+dc;if(r>=0&&r<9&&c>=0&&c<9&&(!b[r][c]||b[r][c].s!==s))mvs.push([r,c])}
+  if(pd.m)for(const[dc,dr]of pd.m){const r=fr+dr*dir,c=fc+dc;if(r>=0&&r<9&&c>=0&&c<9&&(!b[r][c]||b[r][c].s!==s))mvs.push([r,c])}
+  return mvs;
+}
+function findKing(b,s){for(let r=0;r<9;r++)for(let c=0;c<9;c++)if(b[r][c]&&b[r][c].s===s&&(b[r][c].p==='王'||b[r][c].p==='玉'))return[r,c];return null}
+function inChk(b,s){const kp=findKing(b,s);if(!kp)return true;const op=s==='sente'?'gote':'sente';for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(!b[r][c]||b[r][c].s!==op)continue;if(rawMvs(b,op,r,c).some(([mr,mc])=>mr===kp[0]&&mc===kp[1]))return true}return false}
+function apMv(b,h,fr,fc,tr,tc){const nb=b.map(r=>r.map(c=>c?{...c}:null)),nh={sente:{...h.sente},gote:{...h.gote}},pc=nb[fr][fc];if(nb[tr][tc]){const bs=UNPRO[nb[tr][tc].p]||nb[tr][tc].p;nh[pc.s][bs]=(nh[pc.s][bs]||0)+1}nb[tr][tc]={...pc};nb[fr][fc]=null;return[nb,nh]}
+function apDr(b,h,s,p,tr,tc){const nb=b.map(r=>r.map(c=>c?{...c}:null)),nh={sente:{...h.sente},gote:{...h.gote}};nb[tr][tc]={p,s};nh[s][p]--;if(nh[s][p]<=0)delete nh[s][p];return[nb,nh]}
+function wChk(b,h,s,fr,fc,tr,tc){const[nb]=apMv(b,h,fr,fc,tr,tc);return inChk(nb,s)}
+function wChkD(b,h,s,p,tr,tc){const[nb]=apDr(b,h,s,p,tr,tc);return inChk(nb,s)}
+function vMvs(b,h,s,fr,fc){return rawMvs(b,s,fr,fc).filter(([tr,tc])=>!wChk(b,h,s,fr,fc,tr,tc))}
+function dSqs(b,h,s,p){const sq=[];for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(b[r][c])continue;if((p==='歩'||p==='香')&&((s==='sente'&&r===0)||(s==='gote'&&r===8)))continue;if(p==='桂'&&((s==='sente'&&r<=1)||(s==='gote'&&r>=7)))continue;if(p==='歩'){let nf=false;for(let rr=0;rr<9;rr++)if(b[rr][c]&&b[rr][c].p==='歩'&&b[rr][c].s===s){nf=true;break}if(nf)continue}if(!wChkD(b,h,s,p,r,c))sq.push([r,c])}return sq}
+function inPro(r,s){return s==='sente'?r<=2:r>=6}
+function cPro(p){return p in PRO}
+function hasAny(b,h,s){for(let r=0;r<9;r++)for(let c=0;c<9;c++)if(b[r][c]&&b[r][c].s===s&&vMvs(b,h,s,r,c).length>0)return true;for(const p of Object.keys(h[s]||{}))if((h[s][p]||0)>0&&dSqs(b,h,s,p).length>0)return true;return false}
+function evB(b,h){let sc=0;for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(!b[r][c])continue;const v=PV[b[r][c].p]||0;sc+=b[r][c].s==='gote'?v:-v;sc+=b[r][c].s==='gote'?r*4:-(8-r)*4}for(const p of Object.keys(h.gote||{}))sc+=(PV[p]||0)*.75*(h.gote[p]||0);for(const p of Object.keys(h.sente||{}))sc-=(PV[p]||0)*.75*(h.sente[p]||0);return sc}
+function allMvs(b,h,s){const mvs=[];for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(!b[r][c]||b[r][c].s!==s)continue;for(const[tr,tc]of vMvs(b,h,s,r,c))mvs.push({t:'mv',fr:r,fc:c,tr,tc,p:b[r][c].p})}for(const p of Object.keys(h[s]||{})){if((h[s][p]||0)<=0)continue;for(const[dr,dc]of dSqs(b,h,s,p))mvs.push({t:'drop',p,tr:dr,tc:dc})}return mvs}
+function apFS(b,h,s,mv){if(mv.t==='mv'){const[nb,nh]=apMv(b,h,mv.fr,mv.fc,mv.tr,mv.tc);if(cPro(nb[mv.tr][mv.tc]?.p)&&(inPro(mv.tr,s)||inPro(mv.fr,s)))nb[mv.tr][mv.tc]={p:PRO[nb[mv.tr][mv.tc].p],s};return[nb,nh]}return apDr(b,h,s,mv.p,mv.tr,mv.tc)}
+function mm(b,h,dp,al,be,mx){const s=mx?'gote':'sente';if(dp===0)return[evB(b,h),null];const mvs=allMvs(b,h,s).sort(()=>Math.random()-.5);if(!mvs.length)return[mx?-9999:9999,null];let best=mx?-Infinity:Infinity,bm=mvs[0];for(const mv of mvs){const[nb,nh]=apFS(b,h,s,mv);const[val]=mm(nb,nh,dp-1,al,be,!mx);if(mx){if(val>best){best=val;bm=mv}al=Math.max(al,val)}else{if(val<best){best=val;bm=mv}be=Math.min(be,val)}if(be<=al)break}return[best,bm]}
+function dpFromElo(e){if(e<1100)return 1;if(e<1300)return 2;if(e<1600)return 3;if(e<2000)return 4;return 5}
+function bestMv(b,h,s,elo=1500){const[,mv]=mm(b,h,dpFromElo(elo),-Infinity,Infinity,s==='gote');return mv}
+function aiMv(b,h,s,elo){const bm=bestMv(b,h,s,elo);if(Math.random()<Math.max(0,(1300-elo)/1300)*.4){const mvs=allMvs(b,h,s);if(mvs.length)return mvs[Math.floor(Math.random()*mvs.length)]}return bm}
+function explMv(mv,b,h,s){
+  if(!mv)return['Kein Zug gefunden.',''];
+  let why='',strat='';
+  if(mv.t==='drop'){why=`<em>Drop: ${mv.p} ${FN[mv.p]||''}</em><br>`;why+=mv.p==='歩'?'Bauer-Drop erzeugt sofortigen Druck.':mv.p==='飛'?'Turm-Drop — eine der stärksten Aktionen!':mv.p==='角'?'Läufer-Drop — kontrolliert beide Diagonalen.':'Drop-Figuren sind sofort wirksam.';strat='Drops sind oft überraschender als normale Züge.'}
+  else{const pn=FN[mv.p]||mv.p,cap=b[mv.tr][mv.tc];why=`<em>${mv.p} ${pn}</em> → Feld (${9-mv.tc}/${9-mv.tr})`;if(cap)why+=`<br><em>Schlägt ${FN[cap.p]||cap.p} (${cap.p})</em> — kommt in deine Hand!`;if(inPro(mv.tr,s)&&cPro(mv.p))why+=`<br><em>Beförderung → ${PRO[mv.p]} möglich!</em>`;const[nb]=apFS(b,h,s,mv);if(inChk(nb,s==='sente'?'gote':'sente'))why+=`<br><em>⚠ Schach!</em>`;strat='KI bewertet alle Antwort-Züge und wählt die stärkste Verbesserung.'}
+  return[why,strat];
+}
+
+// ── GAME STATE ──
+const G={mode:null,board:null,hands:null,cur:'sente',sel:null,valid:[],hist:[],stHist:[],over:false,kiElo:1000,hintMv:null,lastMv:null,pending:null,aiOn:false,roomCode:null,myRole:null,poll:null,lastTs:0};
+function mkBrd(){const b=Array.from({length:9},()=>Array(9).fill(null));['香','桂','銀','金','玉','金','銀','桂','香'].forEach((p,c)=>b[0][c]={p,s:'gote'});b[1][1]={p:'飛',s:'gote'};b[1][7]={p:'角',s:'gote'};for(let c=0;c<9;c++)b[2][c]={p:'歩',s:'gote'};['香','桂','銀','金','王','金','銀','桂','香'].forEach((p,c)=>b[8][c]={p,s:'sente'});b[7][7]={p:'飛',s:'sente'};b[7][1]={p:'角',s:'sente'};for(let c=0;c<9;c++)b[6][c]={p:'歩',s:'sente'};return b}
+function startGame(mode){
+  if(G.poll){clearInterval(G.poll);G.poll=null}
+  Object.assign(G,{mode,board:mkBrd(),hands:{sente:{},gote:{}},cur:'sente',sel:null,valid:[],hist:[],stHist:[],over:false,hintMv:null,lastMv:null,aiOn:false,roomCode:null,myRole:null});
+  document.getElementById('menu').classList.add('h');
+  for(const id of['kip','elop','fgp','hntp'])document.getElementById(id).style.display='none';
+  if(mode==='vs-ki'){G.kiElo=Math.max(500,getElo()+Math.round((Math.random()-.5)*300));for(const id of['kip','elop'])document.getElementById(id).style.display='block';document.getElementById('kiv').textContent=G.kiElo;document.getElementById('krl').textContent=getRank(G.kiElo);const f=Math.floor(Math.min(G.kiElo/2300,1)*10);document.getElementById('kpp').innerHTML=Array.from({length:10},(_,i)=>`<div class="kp${i<f?' on':''}"></div>`).join('');document.getElementById('mbadge').textContent=`⚔️ vs KI ELO ${G.kiElo}`}
+  else if(mode==='learn'){for(const id of['fgp','hntp'])document.getElementById(id).style.display='block';document.getElementById('mbadge').textContent='🎓 Lernmodus';renderFigs();setTimeout(showTutorial,400)}
+  else document.getElementById('mbadge').textContent='👥 2 Spieler';
+  updElo();rebuild();resetCam();updStatus();renderHands();renderHist();
+}
+function saveS(){G.stHist.push({board:G.board.map(r=>r.map(c=>c?{...c}:null)),hands:{sente:{...G.hands.sente},gote:{...G.hands.gote}},cur:G.cur,lastMv:G.lastMv?{...G.lastMv}:null})}
+function undoMove(){if(!G.stHist.length)return;const s=G.stHist.pop();Object.assign(G,{board:s.board,hands:s.hands,cur:s.cur,lastMv:s.lastMv});if(G.hist.length)G.hist.pop();G.over=false;G.sel=null;G.valid=[];G.hintMv=null;G.aiOn=false;resetHint();rebuild();updStatus();renderHands();renderHist()}
+function resign(){if(G.over||!confirm('Aufgeben?'))return;endGame(G.cur==='sente'?'Gote':'Sente','Aufgegeben',G.cur==='gote')}
+function newGame(){closeOv('res-ov');startGame(G.mode)}
+function goMenu(){closeOv('res-ov');if(G.poll){clearInterval(G.poll);G.poll=null}document.getElementById('menu').classList.remove('h');updElo()}
+function doMv(fr,fc,tr,tc,pro){saveS();const cell=G.board[fr][fc],cap=G.board[tr][tc];if(cap){const bs=UNPRO[cap.p]||cap.p;G.hands[cell.s][bs]=(G.hands[cell.s][bs]||0)+1}G.board[tr][tc]={...cell};G.board[fr][fc]=null;if(pro===true&&cPro(cell.p))G.board[tr][tc].p=PRO[cell.p];if(pro!==true&&cPro(cell.p)){const m=(cell.p==='歩'||cell.p==='香')&&((cell.s==='sente'&&tr===0)||(cell.s==='gote'&&tr===8));const m2=cell.p==='桂'&&((cell.s==='sente'&&tr<=1)||(cell.s==='gote'&&tr>=7));if(m||m2)G.board[tr][tc].p=PRO[cell.p]}G.lastMv={fr,fc,tr,tc};addH(cell.p,fr,fc,tr,tc,cap?.p,G.board[tr][tc].p);finTurn()}
+function doDr(s,p,tr,tc){saveS();G.board[tr][tc]={p,s};G.hands[s][p]--;if(G.hands[s][p]<=0)delete G.hands[s][p];G.lastMv={fr:null,fc:null,tr,tc,drop:true};addH(p,null,null,tr,tc,null,p,true);finTurn()}
+function finTurn(){G.sel=null;G.valid=[];G.hintMv=null;G.aiOn=false;resetHint();const op=G.cur==='sente'?'gote':'sente';G.cur=op;if(G.mode==='online')saveOL();rebuild();updStatus();renderHands();renderHist();if(G.mode==='vs-ki')updEbar();if(inChk(G.board,op)&&!hasAny(G.board,G.hands,op)){setTimeout(()=>endGame(G.cur==='gote'?'Sente':'Gote','Schachmatt!',G.cur==='gote'),300);return}if(!hasAny(G.board,G.hands,op)){setTimeout(()=>endGame(G.cur==='gote'?'Sente':'Gote','Keine Züge!',G.cur==='gote'),300);return}if(!G.over&&G.mode==='vs-ki'&&G.cur==='gote'){G.aiOn=true;updStatus();setTimeout(runAI,420)}if(!G.over&&G.mode==='learn'&&G.cur==='gote'){G.aiOn=true;updStatus();document.getElementById('skpb').style.display='block';document.getElementById('hwhy').textContent='KI denkt…';setTimeout(runLearnAI,850)}}
+function runAI(){if(G.over)return;const mv=aiMv(G.board,G.hands,'gote',G.kiElo);if(!mv){endGame('Sente','KI keine Züge',true);return}exAI('gote',mv);G.aiOn=false}
+// Hint AI uses SAME depth as ki opponent
+function runLearnAI(){if(G.over)return;const mv=bestMv(G.board,G.hands,'gote',G.kiElo);if(!mv){endGame('Sente','Gote keine Züge',true);return}const[why,strat]=explMv(mv,G.board,G.hands,'gote');document.getElementById('hwhy').innerHTML='<strong>KI-Zug:</strong><br>'+why;document.getElementById('hstrat').textContent=strat||'';document.getElementById('skpb').style.display='none';setTimeout(()=>{exAI('gote',mv);G.aiOn=false},550)}
+function skipAI(){if(!G.aiOn)return;runLearnAI();document.getElementById('skpb').style.display='none'}
+function exAI(s,mv){if(mv.t==='mv'){const p=G.board[mv.fr][mv.fc]?.p,pr=cPro(p)&&(inPro(mv.tr,s)||inPro(mv.fr,s));doMv(mv.fr,mv.fc,mv.tr,mv.tc,pr)}else doDr(s,mv.p,mv.tr,mv.tc)}
+function endGame(winner,reason,senteWon){G.over=true;document.getElementById('res-t').textContent=winner+' gewinnt!';document.getElementById('res-m').textContent=reason;const dd=document.getElementById('res-d'),rd=document.getElementById('res-r');if(G.mode==='vs-ki'){const d=calcElo(getElo(),G.kiElo,!!senteWon),ne=Math.max(100,getElo()+d);setElo(ne);dd.textContent=(d>=0?'+':'')+d+' ELO';dd.className='edelt '+(d>=0?'p':'m');rd.textContent='Neue ELO: '+ne+' · '+getRank(ne)}else{dd.textContent='';rd.textContent=''}document.getElementById('res-ov').classList.add('on');updElo();rebuild()}
+function resetHint(){document.getElementById('exh').style.display='none';document.getElementById('hstrat').textContent='';if(G.mode==='learn'&&G.cur==='sente')document.getElementById('hwhy').textContent='Drücke Hinweis für Erklärung.'}
+function getHint(){if(G.over||G.cur!=='sente'||G.mode!=='learn')return;const mv=bestMv(G.board,G.hands,'sente',G.kiElo);if(!mv){document.getElementById('hwhy').textContent='Kein Zug.';return}G.hintMv=mv;const[why,strat]=explMv(mv,G.board,G.hands,'sente');document.getElementById('hwhy').innerHTML=why;document.getElementById('hstrat').textContent=strat||'';document.getElementById('exh').style.display='block';rebuild()}
+function execHint(){if(!G.hintMv||G.over)return;const mv=G.hintMv;G.hintMv=null;G.sel=null;G.valid=[];if(mv.t==='drop')doDr('sente',mv.p,mv.tr,mv.tc);else{const p=G.board[mv.fr][mv.fc]?.p;if(cPro(p)&&(inPro(mv.tr,'sente')||inPro(mv.fr,'sente')))askPro(mv.fr,mv.fc,mv.tr,mv.tc,p);else doMv(mv.fr,mv.fc,mv.tr,mv.tc,false)}}
+function askPro(fr,fc,tr,tc,p){const pr=PRO[p];document.getElementById('probts').innerHTML=`<div class="probt" onclick="confPro(true)"><span class="pk">${pr}</span><span class="pl">Befördern</span></div><div class="probt nop" onclick="confPro(false)"><span class="pk">${p}</span><span class="pl">Nicht</span></div>`;G.pending={fr,fc,tr,tc};document.getElementById('pro-ov').classList.add('on')}
+function confPro(pr){closeOv('pro-ov');if(!G.pending)return;const{fr,fc,tr,tc}=G.pending;G.pending=null;doMv(fr,fc,tr,tc,pr)}
+function addH(p,fr,fc,tr,tc,cap,fp,drop=false){const n=G.hist.length+1;G.hist.push(n+'.'+(drop?`${p}*${9-tc}${9-tr}`:`${p}${fr!==null?9-fc:''}${fr!==null?9-fr:''}→${9-tc}${9-tr}${cap?'×'+cap:''}${fp!==p?'+':''}`))}
+function renderHist(){const el=document.getElementById('mvh');el.innerHTML=G.hist.map((m,i)=>`<div class="${i===G.hist.length-1?'last':''}">${m}</div>`).join('');el.scrollTop=el.scrollHeight}
+function renderHands(){for(const s of['sente','gote']){const c=document.getElementById(s==='sente'?'sh':'gh');c.innerHTML='';for(const p of Object.keys(G.hands[s]||{})){if(!G.hands[s][p])continue;const el=document.createElement('div');el.className='hp '+(s==='sente'?'s':'g');if(G.sel?.hand&&G.sel.s===s&&G.sel.p===p)el.classList.add('sel');el.textContent=p;if(G.hands[s][p]>1){const cn=document.createElement('div');cn.className='hpc';cn.textContent=G.hands[s][p];el.appendChild(cn)}el.addEventListener('click',()=>handClick(s,p));c.appendChild(el)}}}
+function updStatus(){const bar=document.getElementById('sbar');if(G.over){bar.textContent='Spiel beendet';bar.className='';return}if(G.aiOn){bar.textContent='KI denkt…';bar.className='think';return}const chk=inChk(G.board,G.cur),who=G.cur==='sente'?'▲ Sente':'▽ Gote';bar.textContent=chk?`⚠ ${who} SCHACH!`:`${who} am Zug`;bar.className=chk?'chk':''}
+function updEbar(){const ev=evB(G.board,G.hands),n=Math.max(0,Math.min(100,50-ev/40));const eb=document.getElementById('ebar');if(eb)eb.style.width=n+'%';const el=document.getElementById('elbl');if(el)el.textContent=ev>300?'Vorteil KI':ev<-300?'Vorteil Du':ev>100?'leichter KI-Vorteil':ev<-100?'leichter Vorteil':'ausgeglichen'}
+function renderFigs(){const g=document.getElementById('fgg');g.innerHTML=['王','飛','角','金','銀','桂','香','歩'].map(k=>`<div class="fgc" onclick="showFig('${k}')"><div class="fk">${k}</div><div class="fn">${FD[k]?.[0]||''}</div></div>`).join('')}
+function showFig(k){const d=FD[k];if(!d)return;const el=document.getElementById('fdt');el.innerHTML=`<strong>${k} — ${d[0]}</strong><br>${d[1]}<br><em style="color:#d4af37">${d[2]}</em>`;el.classList.add('on')}
+
+// Online
+const OPFX='shogi_ol_';function olK(c,s){return OPFX+c+'_'+s}function genCode(){return Math.random().toString(36).substr(2,6).toUpperCase()}
+function showOnline(){document.getElementById('online-ov').classList.add('on')}
+function createRoom(){const code=genCode();G.roomCode=code;G.myRole='sente';localStorage.setItem(olK(code,'host'),'1');localStorage.setItem(olK(code,'state'),'');document.getElementById('rinfo').style.display='block';document.getElementById('rcode').textContent=code;document.getElementById('rrole').textContent='Du = Sente ▲';document.getElementById('rst').textContent='⏳ Warte…';if(G.poll)clearInterval(G.poll);G.poll=setInterval(()=>{if(localStorage.getItem(olK(code,'guest'))==='joined'){clearInterval(G.poll);G.poll=null;document.getElementById('rst').textContent='✅ Verbunden!';setTimeout(()=>{closeOv('online-ov');startOL(code,'sente')},600)}},800)}
+function joinRoom(){const code=document.getElementById('jin').value.trim().toUpperCase();if(!code||!localStorage.getItem(olK(code,'host'))){alert('Raum nicht gefunden');return}G.roomCode=code;G.myRole='gote';localStorage.setItem(olK(code,'guest'),'joined');document.getElementById('rinfo').style.display='block';document.getElementById('rcode').textContent=code;document.getElementById('rrole').textContent='Du = Gote ▽';document.getElementById('rst').textContent='✅ Verbunden!';setTimeout(()=>{closeOv('online-ov');startOL(code,'gote')},600)}
+function startOL(code,role){Object.assign(G,{mode:'online',roomCode:code,myRole:role,board:mkBrd(),hands:{sente:{},gote:{}},cur:'sente',sel:null,valid:[],hist:[],stHist:[],over:false,hintMv:null,lastMv:null,aiOn:false});if(role==='sente')saveOL();document.getElementById('mbadge').textContent='🌐 Online';document.getElementById('menu').classList.add('h');updElo();updStatus();renderHands();rebuild();resetCam();if(G.poll)clearInterval(G.poll);G.poll=setInterval(()=>{if(G.over)return;const raw=localStorage.getItem(olK(code,'state'));if(!raw)return;try{const st=JSON.parse(raw);if(st.cur!==G.myRole&&st.ts>=(G.lastTs||0)){G.lastTs=st.ts;Object.assign(G,{board:st.board,hands:st.hands,cur:st.cur,hist:st.hist||[],lastMv:st.lastMv});rebuild();updStatus();renderHands();renderHist()}}catch(e){}},1200)}
+function saveOL(){const st={board:G.board,hands:G.hands,cur:G.cur,hist:G.hist,lastMv:G.lastMv,ts:Date.now()};localStorage.setItem(olK(G.roomCode,'state'),JSON.stringify(st))}
+function myTurn(){return G.mode!=='online'||(G.mode==='online'&&G.cur===G.myRole)}
+
+// ══════════════════════════════════════════
+//  THREE.JS RENDERER
+// ══════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({canvas:document.getElementById('c3d'),antialias:true,alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.1;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0a0804);
+scene.fog=new THREE.FogExp2(0x0a0804,0.018);
+
+const camera=new THREE.PerspectiveCamera(42,1,0.1,300);
+
+function onResize(){const w=window.innerWidth,h=window.innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}
+window.addEventListener('resize',onResize);onResize();
+
+// Lights
+const ambL=new THREE.AmbientLight(0xffe8d0,0.5);scene.add(ambL);
+const sunL=new THREE.DirectionalLight(0xfff5e0,1.6);sunL.position.set(10,25,15);sunL.castShadow=true;sunL.shadow.mapSize.set(4096,4096);sunL.shadow.camera.near=1;sunL.shadow.camera.far=80;sunL.shadow.camera.left=-25;sunL.shadow.camera.right=25;sunL.shadow.camera.top=25;sunL.shadow.camera.bottom=-25;sunL.shadow.bias=-0.001;scene.add(sunL);
+const fillL=new THREE.DirectionalLight(0xb0d0ff,0.35);fillL.position.set(-8,10,-10);scene.add(fillL);
+const rimL=new THREE.PointLight(0xffd080,0.8,40);rimL.position.set(0,15,-14);scene.add(rimL);
+
+// Floor
+const floorG=new THREE.PlaneGeometry(120,120);
+const floorM=new THREE.MeshLambertMaterial({color:0x060402});
+const floorMesh=new THREE.Mesh(floorG,floorM);floorMesh.rotation.x=-Math.PI/2;floorMesh.position.y=-0.02;floorMesh.receiveShadow=true;scene.add(floorMesh);
+
+// ─── WOOD TEXTURE (procedural) ───
+function mkWoodTex(seed=0,light=true){
+  const S=256;const cv=document.createElement('canvas');cv.width=S;cv.height=S;const cx=cv.getContext('2d');
+  cx.fillStyle=light?'#c88820':'#8a5810';cx.fillRect(0,0,S,S);
+  // base gradient
+  const g=cx.createLinearGradient(0,0,S,S);
+  if(light){g.addColorStop(0,'#e0a030');g.addColorStop(.4,'#c88020');g.addColorStop(1,'#a86010')}
+  else{g.addColorStop(0,'#7a4810');g.addColorStop(.5,'#5a3008');g.addColorStop(1,'#3a1e04')}
+  cx.fillStyle=g;cx.fillRect(0,0,S,S);
+  // grain lines
+  for(let i=0;i<50;i++){
+    const y=(i*S/50+seed*37)%S,col=i%3===0?'rgba(255,200,80,0.07)':'rgba(0,0,0,0.09)';
+    cx.strokeStyle=col;cx.lineWidth=.5+Math.random();cx.beginPath();cx.moveTo(0,y);
+    let x=0;while(x<S){x+=12+Math.random()*20;cx.quadraticCurveTo(x-10,y+(Math.random()-.5)*5,x,y+(Math.random()-.5)*4)}
+    cx.stroke();
+  }
+  // highlight sheen
+  const sh=cx.createLinearGradient(0,0,S*0.3,S*0.3);sh.addColorStop(0,'rgba(255,240,180,0.18)');sh.addColorStop(1,'rgba(255,240,180,0)');cx.fillStyle=sh;cx.fillRect(0,0,S,S);
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
+}
+
+// ─── PIECE TEXTURE with kanji ───
+// IMPORTANT: ExtrudeGeometry maps UV using the shape bounding box.
+// Pentagon goes from -PW/2 to +PW/2 in X and -PD/2 to +PD/2 in Y.
+// UV (0,0) = bottom-left corner of bounding box, UV (1,1) = top-right.
+// So we render kanji into a 1:1 square that fills this bbox.
+// The pentagon cuts off corners, but the visible top region maps approximately to UV (0.1..0.9, 0.0..0.85)
+function mkPieceTex(kanji,isPro,isSente){
+  const S=512; // higher res for crisp kanji
+  const cv=document.createElement('canvas');cv.width=S;cv.height=S;const cx=cv.getContext('2d');
+
+  // Background — solid wood color, no gradient that would clash with shape
+  cx.fillStyle=isSente?'#f4e4b0':'#1e1408';
+  cx.fillRect(0,0,S,S);
+
+  // Subtle radial gradient for depth
+  const g=cx.createRadialGradient(S*.42,S*.4,0,S/2,S/2,S*.6);
+  if(isSente){g.addColorStop(0,'#fff8e0');g.addColorStop(.7,'#f0dca0');g.addColorStop(1,'#d8b870')}
+  else{g.addColorStop(0,'#3a2a14');g.addColorStop(.7,'#1c1208');g.addColorStop(1,'#0a0604')}
+  cx.fillStyle=g;cx.fillRect(0,0,S,S);
+
+  // Wood grain
+  cx.globalAlpha=isSente?.12:.18;
+  for(let i=0;i<8;i++){
+    const y=i*S/8+Math.random()*8;
+    cx.strokeStyle=isSente?'#7a4810':'#d4a040';
+    cx.lineWidth=1+Math.random()*1.5;
+    cx.beginPath();cx.moveTo(0,y);
+    let x=0;while(x<S){x+=20+Math.random()*30;cx.quadraticCurveTo(x-15,y+(Math.random()-.5)*8,x,y+(Math.random()-.5)*6)}
+    cx.stroke();
+  }
+  cx.globalAlpha=1;
+
+  // KANJI — large, centered, very legible
+  cx.save();
+  // Note: ExtrudeGeometry default UV places the front cap such that the texture appears
+  // mirrored/rotated depending on orientation. After our rotateX(-PI/2), the top face
+  // shows the texture with U increasing along +X and V increasing along +Z (back of board).
+  // For Sente: kanji should read normally when looking from Sente side (camera on +Z side)
+  // → no flip needed
+  // For Gote: piece is rotated 180° around Y in scene → texture appears flipped → we pre-flip in canvas
+
+  if(!isSente){
+    cx.translate(S/2,S/2);cx.rotate(Math.PI);cx.translate(-S/2,-S/2);
+  }
+
+  // Drop shadow for legibility
+  cx.font=`900 ${Math.floor(S*.55)}px 'Noto Serif JP',serif`;
+  cx.textAlign='center';
+  cx.textBaseline='middle';
+  cx.shadowColor=isSente?'rgba(80,40,0,.4)':'rgba(0,0,0,.7)';
+  cx.shadowBlur=8;
+  cx.shadowOffsetX=2;
+  cx.shadowOffsetY=2;
+  cx.fillStyle=isPro
+    ? (isSente?'#a02818':'#e85040')
+    : (isSente?'#1a0e04':'#e8c068');
+
+  // Draw kanji — flip Y because UV coordinates may be inverted in extrude
+  cx.fillText(kanji,S/2,S*.52);
+  cx.restore();
+
+  const tex=new THREE.CanvasTexture(cv);
+  tex.anisotropy=16;
+  tex.minFilter=THREE.LinearMipmapLinearFilter;
+  tex.magFilter=THREE.LinearFilter;
+  tex.needsUpdate=true;
+  return tex;
+}
+
+// ─── PENTAGON PIECE SHAPE ───
+function mkPieceShape(w,d){
+  // w=width d=depth, returns THREE.Shape
+  const sh=new THREE.Shape();
+  const hw=w/2,hd=d/2;
+  sh.moveTo(-hw*.28,-hd); // top-left cut
+  sh.lineTo( hw*.28,-hd); // top-right cut
+  sh.lineTo( hw,-hd*.3);  // right shoulder
+  sh.lineTo( hw, hd*.38); // right side
+  sh.lineTo(  0, hd);     // bottom tip
+  sh.lineTo(-hw, hd*.38); // left side
+  sh.lineTo(-hw,-hd*.3);  // left shoulder
+  sh.closePath();
+  return sh;
+}
+
+// ─── BUILD SCENE ───
+const CELL=2.0;       // world units per cell
+const BOARD_W=CELL*9;
+const BOARD_THICK=0.6;
+const FRAME_W=0.5;
+
+const woodTex=mkWoodTex(0,true);
+const woodTexDark=mkWoodTex(3,false);
+const standTex=mkWoodTex(7,false);
+
+let sceneRoot=null;
+let pieceObjs={};    // "row,col" → mesh group
+let hlObjs=[];       // highlight planes
+
+// Board group built once
+let boardRoot=null;
+function buildBoardOnce(){
+  if(boardRoot){scene.add(boardRoot);return}
+  boardRoot=new THREE.Group();
+
+  // ── BOARD SURFACE ──
+  const bGeo=new THREE.BoxGeometry(BOARD_W+FRAME_W*2,BOARD_THICK,BOARD_W+FRAME_W*2);
+  const bMat=new THREE.MeshLambertMaterial({map:woodTex,color:0xc08820});
+  const bMesh=new THREE.Mesh(bGeo,bMat);bMesh.position.y=BOARD_THICK/2;bMesh.castShadow=true;bMesh.receiveShadow=true;boardRoot.add(bMesh);
+
+  // Frame edges (darker wood)
+  const fMat=new THREE.MeshLambertMaterial({map:mkWoodTex(1,false),color:0x9a7018});
+  const fh=BOARD_THICK+0.08;
+  [[0,BOARD_W/2+FRAME_W*.5,true],[0,-(BOARD_W/2+FRAME_W*.5),true],[BOARD_W/2+FRAME_W*.5,0,false],[-(BOARD_W/2+FRAME_W*.5),0,false]].forEach(([x,z,isX])=>{
+    const geo=new THREE.BoxGeometry(isX?BOARD_W+FRAME_W*2:FRAME_W,fh,isX?FRAME_W:BOARD_W);
+    const m=new THREE.Mesh(geo,fMat);m.position.set(x,fh/2,z);m.castShadow=true;boardRoot.add(m);
+  });
+
+  // Grid lines (thin flat boxes on top)
+  const gMat=new THREE.MeshBasicMaterial({color:0x5a3a08,transparent:true,opacity:0.55});
+  for(let i=0;i<=9;i++){
+    const gx=new THREE.Mesh(new THREE.BoxGeometry(BOARD_W,0.025,0.05),gMat);gx.position.set(0,BOARD_THICK+0.013,(i-4.5)*CELL);boardRoot.add(gx);
+    const gz=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.025,BOARD_W),gMat);gz.position.set((i-4.5)*CELL,BOARD_THICK+0.013,0);boardRoot.add(gz);
+  }
+
+  // Star points (traditional go-like dots)
+  const dotMat=new THREE.MeshBasicMaterial({color:0x4a2e08});
+  [[2,2],[2,6],[6,2],[6,6],[4,4]].forEach(([c,r])=>{
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,0.035,12),dotMat);
+    m.position.set(cellX(c),BOARD_THICK+0.02,cellZ(r));boardRoot.add(m);
+  });
+
+  // ── 将棋盤台 STAND ──
+  const sH=4.2,legW=0.35,legD=0.35;
+  const sMat=new THREE.MeshLambertMaterial({map:standTex,color:0x7a5010});
+  const sDkMat=new THREE.MeshLambertMaterial({color:0x5a3808});
+
+  // 4 legs
+  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([sx,sz])=>{
+    const lx=sx*(BOARD_W/2+FRAME_W-legW*.6),lz=sz*(BOARD_W/2+FRAME_W-legD*.6);
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(legW,sH,legD),sMat);leg.position.set(lx,-sH/2,lz);leg.castShadow=true;boardRoot.add(leg);
+    // carved detail strip
+    const det=new THREE.Mesh(new THREE.BoxGeometry(legW+.02,.08,legD+.02),sDkMat);det.position.set(lx,-sH*.35,lz);boardRoot.add(det);
+    // foot block
+    const ft=new THREE.Mesh(new THREE.BoxGeometry(legW+.3,.15,legD+.3),sDkMat);ft.position.set(lx,-sH+.07,lz);boardRoot.add(ft);
+  });
+
+  // Top horizontal bars (x-axis)
+  const bW=BOARD_W+FRAME_W*2+.8;
+  [-1,1].forEach(sz=>{
+    const bar=new THREE.Mesh(new THREE.BoxGeometry(bW,.28,.42),sMat);bar.position.set(0,-0.14,sz*(BOARD_W/2+FRAME_W-legD*.6));bar.castShadow=true;boardRoot.add(bar);
+  });
+  // Top horizontal bars (z-axis)
+  [-1,1].forEach(sx=>{
+    const bar=new THREE.Mesh(new THREE.BoxGeometry(.38,.24,BOARD_W+FRAME_W*2+.8),sMat);bar.position.set(sx*(BOARD_W/2+FRAME_W-legW*.6),-0.12,0);bar.castShadow=true;boardRoot.add(bar);
+  });
+  // Lower cross-brace x
+  [-1,1].forEach(sz=>{
+    const bar=new THREE.Mesh(new THREE.BoxGeometry(bW,.2,.32),sDkMat);bar.position.set(0,-sH+.35,sz*(BOARD_W/2+FRAME_W-legD*.6));boardRoot.add(bar);
+  });
+  // Lower cross-brace z
+  [-1,1].forEach(sx=>{
+    const bar=new THREE.Mesh(new THREE.BoxGeometry(.28,.18,BOARD_W+FRAME_W*2+.6),sDkMat);bar.position.set(sx*(BOARD_W/2+FRAME_W-legW*.6),-sH+.33,0);boardRoot.add(bar);
+  });
+
+  scene.add(boardRoot);
+}
+
+// ─── CELL → WORLD COORDS ───
+// Board: row 0 = top(Gote), row 8 = bottom(Sente)
+// World: x goes right, z goes toward camera (positive = toward sente)
+// We want row 0 at z=-BOARD_W/2+CELL/2, row 8 at z=+BOARD_W/2-CELL/2
+function cellX(col){ return (col - 4) * CELL; }   // col 0=left, col 8=right
+function cellZ(row){ return (row - 4) * CELL; }   // row 0=far, row 8=near
+
+function mkHighlight(col,row,color,alpha=0.55){
+  const geo=new THREE.PlaneGeometry(CELL*.9,CELL*.9);
+  const mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:alpha,depthWrite:false,side:THREE.DoubleSide});
+  const m=new THREE.Mesh(geo,mat);m.rotation.x=-Math.PI/2;m.position.set(cellX(col),BOARD_THICK+0.04,cellZ(row));return m;
+}
+function mkDot(col,row,color=0xd4af37){
+  const geo=new THREE.CylinderGeometry(.26,.26,.04,16);
+  const mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:0.75});
+  const m=new THREE.Mesh(geo,mat);m.position.set(cellX(col),BOARD_THICK+0.055,cellZ(row));return m;
+}
+
+// ─── PIECE: pentagon body + elevated kanji label ───
+function buildPiece(p,s){
+  const isSente=s==='sente',isPro=p in UNPRO;
+  const PW=CELL*.80, PD=CELL*.72, PH=0.30;
+  const grp=new THREE.Group();
+
+  // ── 1. BODY: simple extruded pentagon, one solid material ──
+  const shape=mkPieceShape(PW,PD);
+  const geo=new THREE.ExtrudeGeometry(shape,{
+    depth:PH, bevelEnabled:true,
+    bevelThickness:.03, bevelSize:.03, bevelSegments:2
+  });
+  // Shape is in XY, extrude goes +Z. Rotate so top face faces +Y.
+  geo.rotateX(-Math.PI/2);
+  // After rotation: top face (was +Z cap) now faces +Y. Perfect.
+
+  const bodyMat=new THREE.MeshLambertMaterial({
+    color: isSente ? 0xf0dfa0 : 0x28180a,
+    map: mkWoodTex(isSente?2:5, isSente)
+  });
+  const body=new THREE.Mesh(geo, bodyMat);
+  body.castShadow=true;
+  body.receiveShadow=true;
+  grp.add(body);
+
+  // ── 2. KANJI LABEL: canvas texture on a flat plane, raised above body ──
+  // This plane sits 0.05 units ABOVE the body top → no Z-fighting possible.
+  // We draw the kanji dead-center on a square canvas and map it to a square plane.
+  const S=256;
+  const cv=document.createElement('canvas'); cv.width=S; cv.height=S;
+  const cx=cv.getContext('2d');
+
+  // Transparent background so body shows through the non-kanji areas
+  cx.clearRect(0,0,S,S);
+
+  // Filled background circle to give the piece its face color
+  const bg=cx.createRadialGradient(S/2,S/2,0,S/2,S/2,S*.46);
+  if(isSente){
+    bg.addColorStop(0,'rgba(255,252,230,0.95)');
+    bg.addColorStop(1,'rgba(240,220,140,0.80)');
+  } else {
+    bg.addColorStop(0,'rgba(52,38,18,0.95)');
+    bg.addColorStop(1,'rgba(20,12,4,0.85)');
+  }
+  cx.beginPath(); cx.ellipse(S/2,S/2,S*.42,S*.42,0,0,Math.PI*2);
+  cx.fillStyle=bg; cx.fill();
+
+  // Kanji — always drawn right-way-up here.
+  // Gote pieces are rotated 180° in the scene (rotation.y = PI),
+  // so their texture will also appear rotated → kanji reads correctly from Gote side too.
+  cx.font=`900 ${Math.floor(S*.56)}px 'Noto Serif JP',serif`;
+  cx.textAlign='center';
+  cx.textBaseline='middle';
+  cx.shadowColor=isSente?'rgba(60,30,0,.5)':'rgba(0,0,0,.8)';
+  cx.shadowBlur=6; cx.shadowOffsetX=2; cx.shadowOffsetY=2;
+  cx.fillStyle=isPro
+    ? (isSente?'#b02010':'#ff5040')
+    : (isSente?'#180e02':'#e8c060');
+  cx.fillText(p, S/2, S/2+4);
+
+  const tex=new THREE.CanvasTexture(cv);
+  tex.anisotropy=renderer.capabilities.getMaxAnisotropy();
+  tex.needsUpdate=true;
+
+  // Square plane sized to fit within the pentagon top (PW*.70 × PW*.70)
+  const labelSize=Math.min(PW,PD)*0.78;
+  const labelGeo=new THREE.PlaneGeometry(labelSize, labelSize);
+  const labelMat=new THREE.MeshBasicMaterial({
+    map:tex,
+    transparent:true,
+    depthWrite:false,
+    polygonOffset:true,
+    polygonOffsetFactor:-4,
+    polygonOffsetUnits:-4
+  });
+  const label=new THREE.Mesh(labelGeo, labelMat);
+  label.rotation.x=-Math.PI/2;
+  // Place exactly at top of body + tiny gap
+  label.position.y=PH+0.05;
+  grp.add(label);
+
+  return grp;
+}
+
+function rebuild(){
+  // Remove old highlights and pieces
+  if(boardRoot){
+    for(const m of hlObjs)boardRoot.remove(m);
+    hlObjs=[];
+    for(const m of Object.values(pieceObjs))boardRoot.remove(m);
+    pieceObjs={};
+  }else{
+    buildBoardOnce();
+  }
+  if(!boardRoot)buildBoardOnce();
+
+  // Highlights
+  const kpos=!G.over&&inChk(G.board,G.cur)?findKing(G.board,G.cur):null;
+
+  if(G.sel?.row!==undefined){const h=mkHighlight(G.sel.col,G.sel.row,0xd4af37,.42);boardRoot.add(h);hlObjs.push(h)}
+  G.valid.forEach(([r,c])=>{const isCap=G.board[r][c]&&G.board[r][c].s!==G.cur;if(isCap){const h=mkHighlight(c,r,0xc03020,.48);boardRoot.add(h);hlObjs.push(h)}else{const d=mkDot(c,r);boardRoot.add(d);hlObjs.push(d)}});
+  if(G.lastMv){if(G.lastMv.fr!==null){const h=mkHighlight(G.lastMv.fc,G.lastMv.fr,0xd4af37,.18);boardRoot.add(h);hlObjs.push(h)}const h2=mkHighlight(G.lastMv.tc,G.lastMv.tr,0xd4af37,.28);boardRoot.add(h2);hlObjs.push(h2)}
+  if(G.hintMv){if(G.hintMv.t==='mv'){const h=mkHighlight(G.hintMv.fc,G.hintMv.fr,0x4a90d9,.38);boardRoot.add(h);hlObjs.push(h)}const h2=mkHighlight(G.hintMv.tc,G.hintMv.tr,0x4a90d9,.55);boardRoot.add(h2);hlObjs.push(h2)}
+  if(kpos){const h=mkHighlight(kpos[1],kpos[0],0xc03020,.62);boardRoot.add(h);hlObjs.push(h)}
+
+  // Place pieces exactly on their cells
+  for(let row=0;row<9;row++){
+    for(let col=0;col<9;col++){
+      if(!G.board[row][col])continue;
+      const{p,s}=G.board[row][col];
+      const grp=buildPiece(p,s);
+      // Position: center of cell, sitting on top of board
+      grp.position.set(cellX(col), BOARD_THICK, cellZ(row));
+      // Gote pieces face away (rotated 180° around Y)
+      if(s==='gote') grp.rotation.y=Math.PI;
+      // Lift selected piece
+      if(G.sel?.row===row&&G.sel?.col===col) grp.position.y+=0.32;
+      boardRoot.add(grp);
+      pieceObjs[`${row},${col}`]=grp;
+    }
+  }
+}
+
+// ─── ORBIT CAMERA ───
+const cam={th:0.3,ph:1.0,r:28,panX:0,panZ:0,drag:false,rmb:false,lx:0,ly:0,t0:0};
+function resetCam(){Object.assign(cam,{th:0.3,ph:1.0,r:28,panX:0,panZ:0});applyCam()}
+function applyCam(){
+  const x=cam.r*Math.sin(cam.ph)*Math.sin(cam.th)+cam.panX;
+  const y=cam.r*Math.cos(cam.ph);
+  const z=cam.r*Math.sin(cam.ph)*Math.cos(cam.th)+cam.panZ;
+  camera.position.set(x,y,z);camera.lookAt(cam.panX,0,cam.panZ);
+}
+const cvs=document.getElementById('c3d');
+cvs.addEventListener('mousedown',e=>{cam.drag=true;cam.rmb=e.button===2;cam.lx=e.clientX;cam.ly=e.clientY;cam.t0=Date.now()});
+cvs.addEventListener('contextmenu',e=>e.preventDefault());
+window.addEventListener('mouseup',e=>{
+  if(cam.drag&&!cam.rmb&&Date.now()-cam.t0<200)doRayClick(e.clientX,e.clientY);
+  cam.drag=false;
+});
+window.addEventListener('mousemove',e=>{
+  if(!cam.drag)return;
+  const dx=(e.clientX-cam.lx)*.009,dy=(e.clientY-cam.ly)*.009;
+  cam.lx=e.clientX;cam.ly=e.clientY;
+  if(cam.rmb){cam.panX-=dx*cam.r*.25;cam.panZ+=dy*cam.r*.25}
+  else{cam.th-=dx;cam.ph=Math.max(.12,Math.min(Math.PI/2-.04,cam.ph+dy))}
+  applyCam();
+});
+cvs.addEventListener('wheel',e=>{e.preventDefault();cam.r=Math.max(5,Math.min(80,cam.r+e.deltaY*.05));applyCam()},{passive:false});
+let pinchD=0;
+cvs.addEventListener('touchstart',e=>{e.preventDefault();if(e.touches.length===1){cam.drag=true;cam.rmb=false;cam.lx=e.touches[0].clientX;cam.ly=e.touches[0].clientY;cam.t0=Date.now()}else if(e.touches.length===2){pinchD=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)}},{passive:false});
+cvs.addEventListener('touchmove',e=>{e.preventDefault();if(e.touches.length===1&&cam.drag){const dx=(e.touches[0].clientX-cam.lx)*.011,dy=(e.touches[0].clientY-cam.ly)*.011;cam.lx=e.touches[0].clientX;cam.ly=e.touches[0].clientY;cam.th-=dx;cam.ph=Math.max(.12,Math.min(Math.PI/2-.04,cam.ph+dy));applyCam()}else if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);cam.r=Math.max(5,Math.min(80,cam.r-(d-pinchD)*.06));pinchD=d;applyCam()}},{passive:false});
+cvs.addEventListener('touchend',e=>{e.preventDefault();if(Date.now()-cam.t0<250&&e.changedTouches.length===1)doRayClick(e.changedTouches[0].clientX,e.changedTouches[0].clientY);cam.drag=false},{passive:false});
+
+// Raycasting — intersect the board top plane
+const raycaster=new THREE.Raycaster();
+const boardPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-(BOARD_THICK+0.05));
+function doRayClick(cx2,cy2){
+  if(!boardRoot||G.aiOn)return;
+  const rect=cvs.getBoundingClientRect();
+  const mx=((cx2-rect.left)/rect.width)*2-1,my=-((cy2-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(new THREE.Vector2(mx,my),camera);
+  const pt=new THREE.Vector3();
+  if(!raycaster.ray.intersectPlane(boardPlane,pt))return;
+  // pt is in world space → convert to cell
+  const col=Math.round(pt.x/CELL+4);
+  const row=Math.round(pt.z/CELL+4);
+  if(col>=0&&col<9&&row>=0&&row<9)handleCell(row,col);
+}
+
+function handleCell(row,col){
+  if(G.over)return;
+  if(G.mode==='online'&&!myTurn())return;
+  if(G.mode==='learn'&&G.cur==='gote')return;
+  const cell=G.board[row][col];
+
+  // LEARN MODE: clicking own piece first time shows what it is
+  if(G.mode==='learn'&&cell&&cell.s==='sente'&&!G.sel){
+    const d=FD[cell.p]||FD[UNPRO[cell.p]];
+    if(d){
+      const name=FN[cell.p]||cell.p;
+      document.getElementById('hwhy').innerHTML=
+        `<em>${cell.p} ${name}</em><br>${d[1]}<br><span style="color:#d4af37">${d[2]}</span>`;
+      document.getElementById('hstrat').textContent='Klicke nochmal um diesen Stein zu wählen und Züge zu sehen.';
+    }
+  }
+
+  if(G.sel?.hand){if(G.valid.some(([vr,vc])=>vr===row&&vc===col)){const{s,p}=G.sel;G.sel=null;G.valid=[];doDr(s,p,row,col);return}G.sel=null;G.valid=[];rebuild();return}
+  if(G.sel?.row!==undefined){if(G.valid.some(([vr,vc])=>vr===row&&vc===col)){const{row:fr,col:fc}=G.sel,p=G.board[fr][fc]?.p;G.sel=null;G.valid=[];if(cPro(p)&&(inPro(row,G.cur)||inPro(fr,G.cur)))askPro(fr,fc,row,col,p);else doMv(fr,fc,row,col,false);return}if(cell&&cell.s===G.cur){G.sel={row,col};G.valid=vMvs(G.board,G.hands,G.cur,row,col);rebuild();return}G.sel=null;G.valid=[];rebuild();return}
+  if(cell&&cell.s===G.cur){G.sel={row,col};G.valid=vMvs(G.board,G.hands,G.cur,row,col);rebuild()}
+}
+function handClick(s,p){if(G.over||s!==G.cur)return;if(G.mode==='online'&&!myTurn())return;if(G.mode==='learn'&&G.cur==='gote')return;G.sel={hand:true,s,p};G.valid=dSqs(G.board,G.hands,s,p);rebuild()}
+
+// ─── RENDER LOOP ───
+let lastT=0;
+function animate(t){
+  requestAnimationFrame(animate);
+  // gentle breathing of rimlight
+  rimL.intensity=0.6+0.2*Math.sin(t*.00095);
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+
+// ─── TUTORIAL ───
+const TUT_PAGES=[
+  `<strong style="color:#d4af37">Du spielst als Sente ▲</strong> — das sind die <em>hellen Figuren unten</em> auf dem Brett.<br>
+   Die KI spielt als Gote ▽ — dunkle Figuren oben, die dir zugewandt (gedreht) stehen.<br>
+   Du ziehst immer zuerst. Das Ziel: den gegnerischen <strong style="color:#d4af37">König (玉) schachmatt</strong> setzen.`,
+
+  `<strong style="color:#d4af37">Deine Startaufstellung erklärt:</strong><br>
+   • <strong>王 König</strong> — Mitte hinten. Schütze ihn sofort, bringe ihn in eine Ecke.<br>
+   • <strong>飛 Turm</strong> — Mächtigste Figur, zieht gerade beliebig weit.<br>
+   • <strong>角 Läufer</strong> — Zieht diagonal beliebig weit.<br>
+   • <strong>金 Goldgeneral</strong> — Ein Feld, alle Richtungen außer schräg hinten. Ideal als Königsschutz.<br>
+   • <strong>銀 Silbergeneral</strong> — Ein Feld diagonal oder gerade vor.<br>
+   • <strong>桂 Springer</strong> — Springt 2 vor + 1 seitlich, kann über andere hüpfen!<br>
+   • <strong>香 Lanze</strong> — Beliebig weit, aber nur geradeaus nach vorne.<br>
+   • <strong>歩 Bauer</strong> — Ein Feld vor. Neun Stück davon.`,
+
+  `<strong style="color:#d4af37">Die Drop-Regel ★ — das Besondere an Shogi:</strong><br>
+   Wenn du eine gegnerische Figur schlägst, kommt sie <em>in deine Hand</em> (linkes Panel, oben).<br>
+   Statt zu ziehen kannst du diese Figur auf ein beliebiges freies Feld setzen — sofort aktiv!<br>
+   Das macht Shogi viel dynamischer als Schach: Figuren verschwinden nie wirklich.`,
+
+  `<strong style="color:#d4af37">Beförderung:</strong><br>
+   Wenn eine Figur die letzten 3 Reihen des Gegners betritt (Reihen 1–3 für dich),<br>
+   kannst du sie befördern — sie wird stärker! Ein Dialog fragt dich.<br>
+   Beförderter Bauer (と) bewegt sich wie ein Goldgeneral — enorm wertvoll.<br>
+   Turm (飛→龍) und Läufer (角→馬) werden nach Beförderung fast unschlagbar.<br>
+   <strong style="color:#c0392b">Ausnahme:</strong> Goldgenerale und König können nicht befördert werden.`,
+
+  `<strong style="color:#d4af37">So benutzt du den Lernmodus:</strong><br>
+   1. <strong>Klick auf eine Figur</strong> → siehst im Panel rechts was sie ist und kann<br>
+   2. <strong>Nochmal klicken</strong> → gelbe Punkte zeigen alle erlaubten Züge<br>
+   3. <strong>"Hinweis ↗"</strong> → KI zeigt den strategisch besten Zug (blau hervorgehoben)<br>
+   4. <strong>"Ausführen ✓"</strong> → KI führt den Zug für dich aus<br>
+   5. Nach deinem Zug spielt die KI — du siehst im Panel was sie gemacht hat und warum`,
+
+  `<strong style="color:#d4af37">Strategische Grundprinzipien:</strong><br>
+   • König zuerst in die Ecke bringen (Mino-Festung: König + 2 Goldgenerale)<br>
+   • Turm und Läufer sind deine Angriffswaffen — schütze sie<br>
+   • Drops sind Überraschungsangriffe — ein Turm-Drop ins gegnerische Lager kann das Spiel entscheiden<br>
+   • Beförderung wann immer möglich, besonders Bauern<br>
+   • Nie zwei eigene Bauern in derselben Spalte (Nifu-Verbot)<br><br>
+   <strong style="color:#d4af37">Viel Erfolg! Drücke "Hinweis" wenn du nicht weiterkommst.</strong>`
+];
+let tutPage=0;
+function tutNav(dir){
+  tutPage=Math.max(0,Math.min(TUT_PAGES.length-1,tutPage+dir));
+  document.getElementById('tut-content').innerHTML=TUT_PAGES[tutPage];
+  document.getElementById('tut-pg').textContent=`${tutPage+1} / ${TUT_PAGES.length}`;
+  document.getElementById('tut-prev').style.opacity=tutPage===0?'0.3':'1';
+  if(tutPage===TUT_PAGES.length-1){
+    document.getElementById('tut-next').textContent='Los geht\'s! ▶';
+    document.getElementById('tut-next').onclick=()=>closeOv('tut-ov');
+  } else {
+    document.getElementById('tut-next').textContent='Weiter →';
+    document.getElementById('tut-next').onclick=()=>tutNav(1);
+  }
+}
+function showTutorial(){tutPage=0;tutNav(0);document.getElementById('tut-ov').classList.add('on')}
+
+// ─── UTILS ───
+function closeOv(id){document.getElementById(id).classList.remove('on')}
+
+// Init
+buildBoardOnce();
+applyCam();
+updElo();
+</script>
+</body>
+</html>
