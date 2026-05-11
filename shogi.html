@@ -273,7 +273,9 @@ function updElo(){
 // Engine
 function rawMvs(b,s,fr,fc){
   const cell=b[fr][fc];if(!cell||cell.s!==s)return[];
-  const mvs=[],dir=s==='sente'?-1:1,pd=PD[cell.p]||{};
+  // dir: PD vectors use dr=-1 for "forward". Sente moves toward row 0 (subtract rows), so dir=+1
+  // makes fr+dr*dir = fr+(-1)*(+1) = fr-1 ✓. Gote moves toward row 8, dir=-1: fr+(-1)*(-1)=fr+1 ✓
+  const mvs=[],dir=s==='sente'?1:-1,pd=PD[cell.p]||{};
   if(pd.s)for(const[dc,dr]of pd.s){let r=fr+dr*dir,c=fc+dc;while(r>=0&&r<9&&c>=0&&c<9){if(b[r][c]){if(b[r][c].s!==s)mvs.push([r,c]);break}mvs.push([r,c]);r+=dr*dir;c+=dc}}
   if(pd.e)for(const[dc,dr]of pd.e){const r=fr+dr*dir,c=fc+dc;if(r>=0&&r<9&&c>=0&&c<9&&(!b[r][c]||b[r][c].s!==s))mvs.push([r,c])}
   if(pd.m)for(const[dc,dr]of pd.m){const r=fr+dr*dir,c=fc+dc;if(r>=0&&r<9&&c>=0&&c<9&&(!b[r][c]||b[r][c].s!==s))mvs.push([r,c])}
@@ -290,18 +292,108 @@ function dSqs(b,h,s,p){const sq=[];for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(b
 function inPro(r,s){return s==='sente'?r<=2:r>=6}
 function cPro(p){return p in PRO}
 function hasAny(b,h,s){for(let r=0;r<9;r++)for(let c=0;c<9;c++)if(b[r][c]&&b[r][c].s===s&&vMvs(b,h,s,r,c).length>0)return true;for(const p of Object.keys(h[s]||{}))if((h[s][p]||0)>0&&dSqs(b,h,s,p).length>0)return true;return false}
-function evB(b,h){let sc=0;for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(!b[r][c])continue;const v=PV[b[r][c].p]||0;sc+=b[r][c].s==='gote'?v:-v;sc+=b[r][c].s==='gote'?r*4:-(8-r)*4}for(const p of Object.keys(h.gote||{}))sc+=(PV[p]||0)*.75*(h.gote[p]||0);for(const p of Object.keys(h.sente||{}))sc-=(PV[p]||0)*.75*(h.sente[p]||0);return sc}
+// ── ATTACK MAP: which squares does side s attack? ──
+function buildAttackMap(b,s){
+  const atk=Array.from({length:9},()=>new Array(9).fill(0));
+  for(let r=0;r<9;r++)for(let c=0;c<9;c++){
+    if(!b[r][c]||b[r][c].s!==s)continue;
+    for(const[tr,tc]of rawMvs(b,s,r,c))atk[tr][tc]++;
+  }
+  return atk;
+}
+// ── PIECE SAFETY: penalty for undefended attacked pieces ──
+// evB convention: positive = good for gote, negative = good for sente
+function safetyScore(b,atkS,atkG){
+  let sc=0;
+  for(let r=0;r<9;r++)for(let c=0;c<9;c++){
+    if(!b[r][c])continue;
+    const v=PV[b[r][c].p]||0;
+    if(b[r][c].s==='sente'){
+      // sente piece attacked by gote, not defended → bad for sente → positive (good for gote)
+      if(atkG[r][c]>0&&atkS[r][c]===0)sc+=Math.round(v*0.6);
+      else if(atkG[r][c]>0&&atkS[r][c]>0)sc+=Math.round(v*0.15);
+    } else {
+      // gote piece attacked by sente, not defended → bad for gote → negative (good for sente)
+      if(atkS[r][c]>0&&atkG[r][c]===0)sc-=Math.round(v*0.6);
+      else if(atkS[r][c]>0&&atkG[r][c]>0)sc-=Math.round(v*0.15);
+    }
+  }
+  return sc;
+}
+// ── KING SAFETY: penalise king exposure ──
+function kingSafety(b,atkS,atkG){
+  let sc=0;
+  const kg=findKing(b,'gote'),ks=findKing(b,'sente');
+  // threats on sente king → good for gote → positive
+  if(ks){sc+=atkG[ks[0]][ks[1]]*200;}
+  // threats on gote king → good for sente → negative
+  if(kg){sc-=atkS[kg[0]][kg[1]]*200;}
+  return sc;
+}
+// ── MOBILITY: reward more legal moves ──
+function mobilityScore(b,h){
+  const gm=allMvs(b,h,'gote').length;
+  const sm=allMvs(b,h,'sente').length;
+  return (gm-sm)*8;
+}
+function evB(b,h){
+  let sc=0;
+  // Material + positional advancement
+  for(let r=0;r<9;r++)for(let c=0;c<9;c++){
+    if(!b[r][c])continue;
+    const v=PV[b[r][c].p]||0;
+    sc+=b[r][c].s==='gote'?v:-v;
+    sc+=b[r][c].s==='gote'?r*4:-(8-r)*4;
+  }
+  // Hand piece value (slightly discounted)
+  for(const p of Object.keys(h.gote||{}))sc+=(PV[p]||0)*.75*(h.gote[p]||0);
+  for(const p of Object.keys(h.sente||{}))sc-=(PV[p]||0)*.75*(h.sente[p]||0);
+  // Attack maps (built once, reused)
+  const atkS=buildAttackMap(b,'sente');
+  const atkG=buildAttackMap(b,'gote');
+  // Piece safety (unprotected pieces are bad)
+  sc+=safetyScore(b,atkS,atkG);
+  // King safety
+  sc+=kingSafety(b,atkS,atkG);
+  // Mobility
+  sc+=mobilityScore(b,h);
+  return sc;
+}
 function allMvs(b,h,s){const mvs=[];for(let r=0;r<9;r++)for(let c=0;c<9;c++){if(!b[r][c]||b[r][c].s!==s)continue;for(const[tr,tc]of vMvs(b,h,s,r,c))mvs.push({t:'mv',fr:r,fc:c,tr,tc,p:b[r][c].p})}for(const p of Object.keys(h[s]||{})){if((h[s][p]||0)<=0)continue;for(const[dr,dc]of dSqs(b,h,s,p))mvs.push({t:'drop',p,tr:dr,tc:dc})}return mvs}
 function apFS(b,h,s,mv){if(mv.t==='mv'){const[nb,nh]=apMv(b,h,mv.fr,mv.fc,mv.tr,mv.tc);if(cPro(nb[mv.tr][mv.tc]?.p)&&(inPro(mv.tr,s)||inPro(mv.fr,s)))nb[mv.tr][mv.tc]={p:PRO[nb[mv.tr][mv.tc].p],s};return[nb,nh]}return apDr(b,h,s,mv.p,mv.tr,mv.tc)}
-function mm(b,h,dp,al,be,mx){const s=mx?'gote':'sente';if(dp===0)return[evB(b,h),null];const mvs=allMvs(b,h,s).sort(()=>Math.random()-.5);if(!mvs.length)return[mx?-9999:9999,null];let best=mx?-Infinity:Infinity,bm=mvs[0];for(const mv of mvs){const[nb,nh]=apFS(b,h,s,mv);const[val]=mm(nb,nh,dp-1,al,be,!mx);if(mx){if(val>best){best=val;bm=mv}al=Math.max(al,val)}else{if(val<best){best=val;bm=mv}be=Math.min(be,val)}if(be<=al)break}return[best,bm]}
+function mvScore(mv,b){let s=0;if(mv.t==='mv'){const cap=b[mv.tr][mv.tc];if(cap)s+=(PV[cap.p]||0)*2;if(cPro(mv.p)&&(inPro(mv.tr,'sente')||inPro(mv.tr,'gote')))s+=300;}else{s+=(PV[mv.p]||0)*.5;}return s;}
+function mm(b,h,dp,al,be,mx){const s=mx?'gote':'sente';if(dp===0)return[evB(b,h),null];const mvs=allMvs(b,h,s);if(!mvs.length)return[mx?-9999:9999,null];mvs.sort((a,z)=>mvScore(z,b)-mvScore(a,b)+(Math.random()-.5)*30);let best=mx?-Infinity:Infinity,bm=mvs[0];for(const mv of mvs){const[nb,nh]=apFS(b,h,s,mv);const[val]=mm(nb,nh,dp-1,al,be,!mx);if(mx){if(val>best){best=val;bm=mv}al=Math.max(al,val)}else{if(val<best){best=val;bm=mv}be=Math.min(be,val)}if(be<=al)break}return[best,bm]}
 function dpFromElo(e){if(e<1100)return 1;if(e<1300)return 2;if(e<1600)return 3;if(e<2000)return 4;return 5}
 function bestMv(b,h,s,elo=1500){const[,mv]=mm(b,h,dpFromElo(elo),-Infinity,Infinity,s==='gote');return mv}
 function aiMv(b,h,s,elo){const bm=bestMv(b,h,s,elo);if(Math.random()<Math.max(0,(1300-elo)/1300)*.4){const mvs=allMvs(b,h,s);if(mvs.length)return mvs[Math.floor(Math.random()*mvs.length)]}return bm}
 function explMv(mv,b,h,s){
   if(!mv)return['Kein Zug gefunden.',''];
   let why='',strat='';
-  if(mv.t==='drop'){why=`<em>Drop: ${mv.p} ${FN[mv.p]||''}</em><br>`;why+=mv.p==='歩'?'Bauer-Drop erzeugt sofortigen Druck.':mv.p==='飛'?'Turm-Drop — eine der stärksten Aktionen!':mv.p==='角'?'Läufer-Drop — kontrolliert beide Diagonalen.':'Drop-Figuren sind sofort wirksam.';strat='Drops sind oft überraschender als normale Züge.'}
-  else{const pn=FN[mv.p]||mv.p,cap=b[mv.tr][mv.tc];why=`<em>${mv.p} ${pn}</em> → Feld (${9-mv.tc}/${9-mv.tr})`;if(cap)why+=`<br><em>Schlägt ${FN[cap.p]||cap.p} (${cap.p})</em> — kommt in deine Hand!`;if(inPro(mv.tr,s)&&cPro(mv.p))why+=`<br><em>Beförderung → ${PRO[mv.p]} möglich!</em>`;const[nb]=apFS(b,h,s,mv);if(inChk(nb,s==='sente'?'gote':'sente'))why+=`<br><em>⚠ Schach!</em>`;strat='KI bewertet alle Antwort-Züge und wählt die stärkste Verbesserung.'}
+  const op=s==='sente'?'gote':'sente';
+  const atkOp=buildAttackMap(b,op);
+  const atkSelf=buildAttackMap(b,s);
+  if(mv.t==='drop'){
+    why=`<em>Drop: ${mv.p} ${FN[mv.p]||''}</em><br>`;
+    why+=mv.p==='歩'?'Bauer-Drop erzeugt sofortigen Druck.':mv.p==='飛'?'Turm-Drop — eine der stärksten Aktionen!':mv.p==='角'?'Läufer-Drop — kontrolliert beide Diagonalen.':'Drop-Figuren sind sofort wirksam.';
+    // Check if drop square is safe
+    if(atkOp[mv.tr][mv.tc]>0&&atkSelf[mv.tr][mv.tc]===0)why+=`<br><em style="color:#e05040">⚠ Zielfeld wird angegriffen — Absicherung beachten!</em>`;
+    strat='Drops sind oft überraschender als normale Züge.';
+  } else {
+    const pn=FN[mv.p]||mv.p,cap=b[mv.tr][mv.tc];
+    why=`<em>${mv.p} ${pn}</em> → Feld (${9-mv.tc}/${9-mv.tr})`;
+    if(cap)why+=`<br><em>Schlägt ${FN[cap.p]||cap.p} (${cap.p})</em> — kommt in deine Hand!`;
+    if(inPro(mv.tr,s)&&cPro(mv.p))why+=`<br><em>Beförderung → ${PRO[mv.p]} möglich!</em>`;
+    const[nb]=apFS(b,h,s,mv);
+    if(inChk(nb,op))why+=`<br><em>⚠ Schach!</em>`;
+    // Safety analysis on destination
+    const atkOpAfter=buildAttackMap(nb,op);
+    const atkSelfAfter=buildAttackMap(nb,s);
+    if(atkOpAfter[mv.tr][mv.tc]===0)strat='Ziel ist sicher — nicht angreifbar.';
+    else if(atkSelfAfter[mv.tr][mv.tc]>0)strat='Ziel wird angegriffen, aber durch eigene Figur gedeckt.';
+    else strat='Zug verbessert die Gesamtstellung — KI bewertet Antwort-Züge des Gegners.';
+    // Flag if piece was already under attack at source (good to move away)
+    if(atkOp[mv.fr][mv.fc]>0&&atkSelf[mv.fr][mv.fc]===0)why+=`<br><em style="color:#4abe80">↗ Figur war ungedeckt — retten!</em>`;
+  }
   return[why,strat];
 }
 
@@ -766,20 +858,62 @@ function handleCell(row,col){
   if(G.mode==='learn'&&G.cur==='gote')return;
   const cell=G.board[row][col];
 
-  // LEARN MODE: clicking own piece first time shows what it is
-  if(G.mode==='learn'&&cell&&cell.s==='sente'&&!G.sel){
-    const d=FD[cell.p]||FD[UNPRO[cell.p]];
-    if(d){
-      const name=FN[cell.p]||cell.p;
-      document.getElementById('hwhy').innerHTML=
-        `<em>${cell.p} ${name}</em><br>${d[1]}<br><span style="color:#d4af37">${d[2]}</span>`;
-      document.getElementById('hstrat').textContent='Klicke nochmal um diesen Stein zu wählen und Züge zu sehen.';
+  // ── State: hand piece selected → try to drop it ──
+  if(G.sel?.hand){
+    if(G.valid.some(([vr,vc])=>vr===row&&vc===col)){
+      const{s,p}=G.sel;G.sel=null;G.valid=[];doDr(s,p,row,col);
+    } else {
+      G.sel=null;G.valid=[];rebuild();
     }
+    return;
   }
 
-  if(G.sel?.hand){if(G.valid.some(([vr,vc])=>vr===row&&vc===col)){const{s,p}=G.sel;G.sel=null;G.valid=[];doDr(s,p,row,col);return}G.sel=null;G.valid=[];rebuild();return}
-  if(G.sel?.row!==undefined){if(G.valid.some(([vr,vc])=>vr===row&&vc===col)){const{row:fr,col:fc}=G.sel,p=G.board[fr][fc]?.p;G.sel=null;G.valid=[];if(cPro(p)&&(inPro(row,G.cur)||inPro(fr,G.cur)))askPro(fr,fc,row,col,p);else doMv(fr,fc,row,col,false);return}if(cell&&cell.s===G.cur){G.sel={row,col};G.valid=vMvs(G.board,G.hands,G.cur,row,col);rebuild();return}G.sel=null;G.valid=[];rebuild();return}
-  if(cell&&cell.s===G.cur){G.sel={row,col};G.valid=vMvs(G.board,G.hands,G.cur,row,col);rebuild()}
+  // ── State: board piece selected ──
+  if(G.sel?.row!==undefined){
+    // Clicked a valid target → execute move
+    if(G.valid.some(([vr,vc])=>vr===row&&vc===col)){
+      const{row:fr,col:fc}=G.sel,p=G.board[fr][fc]?.p;
+      G.sel=null;G.valid=[];
+      if(cPro(p)&&(inPro(row,G.cur)||inPro(fr,G.cur)))askPro(fr,fc,row,col,p);
+      else doMv(fr,fc,row,col,false);
+      return;
+    }
+    // Clicked another own piece → switch selection (always allowed)
+    if(cell&&cell.s===G.cur){
+      G.sel={row,col};
+      G.valid=vMvs(G.board,G.hands,G.cur,row,col);
+      // In learn mode: show piece info on switch too
+      if(G.mode==='learn'){
+        const d=FD[cell.p]||FD[UNPRO[cell.p]];
+        if(d){const name=FN[cell.p]||cell.p;document.getElementById('hwhy').innerHTML=`<em>${cell.p} ${name}</em><br>${d[1]}<br><span style="color:#d4af37">${d[2]}</span>`;document.getElementById('hstrat').textContent=G.valid.length?`${G.valid.length} mögliche Züge — klicke ein Zielfeld.`:'Keine legalen Züge.';}
+      }
+      rebuild();
+      return;
+    }
+    // Clicked empty/enemy without valid move → deselect
+    G.sel=null;G.valid=[];rebuild();
+    return;
+  }
+
+  // ── State: nothing selected ──
+  if(cell&&cell.s===G.cur){
+    // Learn mode first click: show info AND immediately show valid moves
+    if(G.mode==='learn'){
+      const d=FD[cell.p]||FD[UNPRO[cell.p]];
+      if(d){
+        const name=FN[cell.p]||cell.p;
+        G.sel={row,col};
+        G.valid=vMvs(G.board,G.hands,G.cur,row,col);
+        document.getElementById('hwhy').innerHTML=`<em>${cell.p} ${name}</em><br>${d[1]}<br><span style="color:#d4af37">${d[2]}</span>`;
+        document.getElementById('hstrat').textContent=G.valid.length?`${G.valid.length} mögliche Züge — klicke ein Zielfeld.`:'Keine legalen Züge.';
+        rebuild();
+        return;
+      }
+    }
+    G.sel={row,col};
+    G.valid=vMvs(G.board,G.hands,G.cur,row,col);
+    rebuild();
+  }
 }
 function handClick(s,p){if(G.over||s!==G.cur)return;if(G.mode==='online'&&!myTurn())return;if(G.mode==='learn'&&G.cur==='gote')return;G.sel={hand:true,s,p};G.valid=dSqs(G.board,G.hands,s,p);rebuild()}
 
